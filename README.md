@@ -8,12 +8,21 @@ VibeBob is a Chrome extension that lets you describe UX improvements in plain En
 |---|---|
 | ![Before](docs/screenshot-before.png) | ![After](docs/screenshot-after.png) |
 
+## Install
+
+> The extension is not yet on the Chrome Web Store. Install manually:
+
+1. Download the [latest release zip](https://github.com/stephanecollot/VibeBob/releases) and unzip it
+2. Open `chrome://extensions` in Chrome
+3. Enable **Developer mode** (top right toggle)
+4. Click **Load unpacked** and select the unzipped folder
+5. Click the VibeBob icon in your toolbar, then paste your [Anthropic API key](https://console.anthropic.com/) in Settings
+
 ## How it works
 
-1. **Install the extension** and paste your [Anthropic API key](https://console.anthropic.com/) (BYOK — no backend, your key stays local).
-2. **Open the side panel** on any website and click **New feature**.
-3. **Describe what you want** — *"Add a CSV export button to this table"*, *"Make this sidebar collapsible"*, *"Add a dark mode toggle"*.
-4. The agent inspects the page, writes JS+CSS, and applies it live. Iterate by chatting.
+1. **Open the side panel** on any website and click **New feature**.
+2. **Describe what you want** — *"Add a CSV export button to this table"*, *"Make this sidebar collapsible"*, *"Add a dark mode toggle"*.
+3. The agent inspects the page, writes JS+CSS, and applies it live. Iterate by chatting.
 
 Every change is auto-committed to a per-feature git repo (in-browser, via IndexedDB). You can **revert** to any previous version, **toggle** features on/off, and everything persists across sessions.
 
@@ -34,16 +43,7 @@ pnpm install
 pnpm dev
 ```
 
-Load the extension in Chrome:
-1. Go to `chrome://extensions`
-2. Enable **Developer mode**
-3. Click **Load unpacked** and select the `dist` folder
-
-### Build for production
-
-```bash
-pnpm build
-```
+Then load the `dist` folder as an unpacked extension (see [Install](#install) above). Vite will hot-reload on changes.
 
 ### Package for Chrome Web Store
 
@@ -51,7 +51,7 @@ pnpm build
 pnpm package
 ```
 
-This builds and creates `vibebob.zip` ready for upload.
+Builds and creates `vibebob.zip` ready for upload.
 
 ## Tech stack
 
