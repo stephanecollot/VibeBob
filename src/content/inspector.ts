@@ -126,44 +126,6 @@ export function getComputedStyleFor(input: { selector: string }): Record<string,
   return out;
 }
 
-export function evaluateJs(input: { expr: string }): unknown {
-  if (typeof input.expr !== "string") throw new Error("expr must be a string");
-  const fn = new Function(`"use strict"; return (${input.expr});`);
-  const result = fn();
-  return safeSerialize(result);
-}
-
-function safeSerialize(v: unknown, depth = 3): unknown {
-  if (v === null || v === undefined) return v;
-  const t = typeof v;
-  if (t === "string" || t === "number" || t === "boolean") return v;
-  if (t === "function") return `[Function: ${(v as { name?: string }).name ?? "anon"}]`;
-  if (depth <= 0) return "[…]";
-  if (Array.isArray(v)) return v.slice(0, 50).map((x) => safeSerialize(x, depth - 1));
-  if (v instanceof Element) {
-    return {
-      tag: v.tagName.toLowerCase(),
-      id: v.id || undefined,
-      classes: Array.from(v.classList),
-    };
-  }
-  if (v instanceof NodeList || v instanceof HTMLCollection) {
-    return Array.from(v).slice(0, 50).map((x) => safeSerialize(x, depth - 1));
-  }
-  try {
-    const obj = v as Record<string, unknown>;
-    const out: Record<string, unknown> = {};
-    let i = 0;
-    for (const k of Object.keys(obj)) {
-      if (i++ > 50) break;
-      out[k] = safeSerialize(obj[k], depth - 1);
-    }
-    return out;
-  } catch {
-    return String(v);
-  }
-}
-
 export function clickEl(input: { selector: string }): { ok: true } {
   const el = document.querySelector(input.selector);
   if (!el) throw new Error(`no element matches: ${input.selector}`);
@@ -195,7 +157,6 @@ export type ContentToolName =
   | "inspect_dom"
   | "get_html"
   | "get_computed_style"
-  | "evaluate_js"
   | "click"
   | "type";
 
@@ -203,7 +164,6 @@ export const handlers: Record<ContentToolName, (input: any) => unknown> = {
   inspect_dom: inspectDom,
   get_html: getHtml,
   get_computed_style: getComputedStyleFor,
-  evaluate_js: evaluateJs,
   click: clickEl,
   type: typeInto,
 };

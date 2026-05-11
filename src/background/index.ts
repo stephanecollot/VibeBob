@@ -1,5 +1,6 @@
 import { ensureOffscreen } from "./offscreenManager";
 import { applyBootstrap, unapplyBootstrap } from "./bootstraps";
+import { evaluateJsMain } from "./evaluateJsMain";
 import { attachRouter } from "./router";
 import { applySyncMessage } from "../runtime/featureStore";
 import type { AppMessage } from "../types/messages";
@@ -18,7 +19,7 @@ async function activeTab(): Promise<chrome.tabs.Tab> {
   return tab;
 }
 
-async function ensureContentScript(tabId: number, url: string | undefined): Promise<void> {
+function assertInjectablePage(url: string | undefined): void {
   if (
     !url ||
     url.startsWith("chrome://") ||
@@ -33,6 +34,10 @@ async function ensureContentScript(tabId: number, url: string | undefined): Prom
         `Navigate to a regular http(s) page and try again.`,
     );
   }
+}
+
+async function ensureContentScript(tabId: number, url: string | undefined): Promise<void> {
+  assertInjectablePage(url);
   const cs = chrome.runtime.getManifest().content_scripts?.[0];
   const files = cs?.js ?? [];
   if (files.length === 0) throw new Error("no content script files in manifest");
@@ -104,6 +109,30 @@ async function handleBrowserTool(msg: AppMessage & { type: "browser.tool" }): Pr
   }
   if (msg.tool === "unapply_mod") {
     return unapplyMod(tab, msg.input as { featureId: string });
+  }
+  if (msg.tool === "evaluate_js") {
+    assertInjectablePage(tab.url);
+    const input = msg.input as { expr?: string };
+    if (typeof input.expr !== "string") throw new Error("evaluate_js requires input.expr (string)");
+    try {
+      const [injectionResult] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id! },
+        world: "MAIN",
+        injectImmediately: true,
+        func: evaluateJsMain,
+        args: [input.expr],
+      });
+      return injectionResult?.result;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.includes("Content Security Policy") || message.includes("unsafe-eval")) {
+        throw new Error(
+          "evaluate_js is blocked by this page's Content Security Policy (dynamic code is not allowed). " +
+            "Use inspect_dom, get_html, get_computed_style, or screenshot instead.",
+        );
+      }
+      throw err;
+    }
   }
   const reply = (await sendToContent(tab, {
     target: "content",

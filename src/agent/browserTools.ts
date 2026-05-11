@@ -60,11 +60,15 @@ const definitions: Anthropic.Tool[] = [
   {
     name: "evaluate_js",
     description:
-      "Evaluate a JavaScript expression in the content script context (read-only DOM access). Use for inspection only — never mutate. Returns the serialized result.",
+      "Evaluate JavaScript in the page main world (read-only by convention). Single-expression snippets run as `return (expr)`. If that fails to parse (e.g. multiple `const` lines ending with `JSON.stringify(...)`), the same text is run as a script and the last expression’s value is returned (same completion rules as eval). For Plotly, graph divs expose `_fullLayout` without needing `window.Plotly`. Blocked on strict CSP without unsafe-eval — then use inspect_dom or get_html.",
     input_schema: {
       type: "object",
       properties: {
-        expr: { type: "string", description: "A JavaScript expression." },
+        expr: {
+          type: "string",
+          description:
+            "JavaScript: one expression, or a short script whose last statement is an expression (e.g. const …; JSON.stringify(…)).",
+        },
       },
       required: ["expr"],
     },

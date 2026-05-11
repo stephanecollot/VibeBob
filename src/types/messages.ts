@@ -7,6 +7,7 @@ export type AgentEvent =
   | { kind: "tool-call"; id: string; name: string; input: unknown }
   | { kind: "tool-result"; id: string; output: unknown; isError?: boolean }
   | { kind: "turn-done"; usage?: TokenUsage; assistantCommit?: string }
+  | { kind: "max-steps"; steps: number }
   | { kind: "error"; message: string };
 
 export interface TokenUsage {
@@ -24,6 +25,15 @@ export type AppMessage =
       userMessage: string;
       apiKey: string;
       model?: string;
+      screenshotEnabled?: boolean;
+    }
+  | {
+      type: "agent.continueTurn";
+      target: "offscreen";
+      featureId: FeatureId;
+      apiKey: string;
+      model?: string;
+      screenshotEnabled?: boolean;
     }
   | { type: "agent.cancelTurn"; target: "offscreen"; featureId: FeatureId }
   | { type: "agent.loadSession"; target: "offscreen"; featureId: FeatureId }

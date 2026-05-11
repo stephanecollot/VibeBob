@@ -10,7 +10,7 @@ Lifecycle contract — non-negotiable:
 - cleanup() must restore the page to its pre-apply state. Never leak listeners, observers, timers, or DOM nodes.
 - Use ctx.scope as a unique class prefix on any element you add, to avoid collisions with the page or other mods.
 - Prefer CSS for styling changes, JS only when necessary.
-- evaluate_js is read-only — never mutate via it. Use it for inspection and probing only.
+- evaluate_js is read-only — never mutate via it. Use it for inspection and probing only. Multi-line inspection scripts may omit an explicit return if the last statement is an expression (e.g. ending with JSON.stringify(...)).
 
 Workflow:
 1. Use browser tools (inspect_dom, screenshot, get_html, get_computed_style) to understand the page.

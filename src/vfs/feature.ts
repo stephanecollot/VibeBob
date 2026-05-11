@@ -1,5 +1,6 @@
 import { writeFile, deleteFile, mkFeatureDir, listFiles, readFile, deleteFeature } from "./index";
 import { commitAll, initRepo } from "../git";
+import { removeFeatureScreenshotPreference } from "../runtime/featureStore";
 import type { FeatureId } from "../types";
 import type { AppMessage } from "../types/messages";
 
@@ -51,7 +52,7 @@ export async function writeFileAndCommit(
   message?: string,
 ): Promise<string | null> {
   await writeFile(id, path, contents);
-  const oid = await commitAll(id, message ?? `update ${path}`);
+  const oid = await commitAll(id, message ?? `write: ${path}`);
   await notifyFeatureChanged(id);
   return oid;
 }
@@ -62,12 +63,13 @@ export async function deleteFileAndCommit(
   message?: string,
 ): Promise<string | null> {
   await deleteFile(id, path);
-  const oid = await commitAll(id, message ?? `delete ${path}`);
+  const oid = await commitAll(id, message ?? `delete: ${path}`);
   await notifyFeatureChanged(id);
   return oid;
 }
 
 export async function deleteFeatureFully(id: FeatureId): Promise<void> {
   await deleteFeature(id);
+  await removeFeatureScreenshotPreference(id);
   await notifyFeatureChanged(id);
 }

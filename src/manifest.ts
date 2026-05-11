@@ -40,5 +40,8 @@ export default defineManifest({
       matches: ["<all_urls>"],
     },
   ],
+  content_security_policy: {
+    extension_pages: "script-src 'self'; connect-src https://api.anthropic.com;",
+  },
   minimum_chrome_version: "116",
 });

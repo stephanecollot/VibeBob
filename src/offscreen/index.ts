@@ -1,5 +1,6 @@
 import "../polyfills";
-import { runTurn } from "../agent/loop";
+import { APIError } from "@anthropic-ai/sdk";
+import { runContinueTurn, runTurn } from "../agent/loop";
 import { loadSessionWithCommits } from "../agent/session";
 import { registerBrowserTools } from "../agent/browserTools";
 import { registerFsTools } from "../agent/fsTools";
@@ -20,8 +21,18 @@ const inflight = new Map<FeatureId, AbortController>();
 function send(featureId: FeatureId, event: AgentEvent): void {
   const msg: AppMessage = { type: "agent.event", target: "sidepanel", featureId, event };
   chrome.runtime.sendMessage(msg).catch((e) => {
-    console.warn("[claudethis/offscreen] send failed", e);
+    console.warn("[claudethis/offscreen] send failed", e instanceof Error ? e.message : String(e));
   });
+}
+
+function formatAgentError(err: unknown): string {
+  const fallback = err instanceof Error ? err.message : String(err);
+  if (!(err instanceof APIError)) return fallback;
+  const lower = fallback.toLowerCase();
+  if (err.status === 400 && lower.includes("prompt is too long")) {
+    return "The conversation hit the API input size limit. Try a new feature or a shorter thread.";
+  }
+  return fallback;
 }
 
 chrome.runtime.onMessage.addListener((raw: AppMessage, _sender, sendResponse) => {
@@ -35,23 +46,61 @@ chrome.runtime.onMessage.addListener((raw: AppMessage, _sender, sendResponse) =>
 
     (async () => {
       try {
-        if (!raw.apiKey) throw new Error("no API key — open Settings and save");
+        const { apiKey, screenshotEnabled: screenshotEnabledFromMsg } = raw;
+        if (!apiKey) throw new Error("no API key — open Settings and save");
         console.log("[claudethis/offscreen] starting turn", {
           model: raw.model,
           featureId: raw.featureId,
+          screenshotEnabled: screenshotEnabledFromMsg,
         });
         await runTurn({
           featureId: raw.featureId,
           userMessage: raw.userMessage,
-          apiKey: raw.apiKey,
+          apiKey,
           model: raw.model,
+          screenshotEnabled: screenshotEnabledFromMsg ?? true,
           emit: (event) => send(raw.featureId, event),
           signal: ctrl.signal,
         });
         console.log("[claudethis/offscreen] turn complete");
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        console.error("[claudethis/offscreen] turn failed", err);
+        const message = formatAgentError(err);
+        console.error("[claudethis/offscreen] turn failed", message);
+        send(raw.featureId, { kind: "error", message });
+      } finally {
+        inflight.delete(raw.featureId);
+      }
+    })();
+    sendResponse({ ok: true });
+    return false;
+  }
+
+  if (raw.type === "agent.continueTurn") {
+    const ctrl = new AbortController();
+    inflight.get(raw.featureId)?.abort();
+    inflight.set(raw.featureId, ctrl);
+
+    (async () => {
+      try {
+        const { apiKey, screenshotEnabled: screenshotEnabledFromMsg } = raw;
+        if (!apiKey) throw new Error("no API key — open Settings and save");
+        console.log("[claudethis/offscreen] continuing turn", {
+          model: raw.model,
+          featureId: raw.featureId,
+          screenshotEnabled: screenshotEnabledFromMsg,
+        });
+        await runContinueTurn({
+          featureId: raw.featureId,
+          apiKey,
+          model: raw.model,
+          screenshotEnabled: screenshotEnabledFromMsg ?? true,
+          emit: (event) => send(raw.featureId, event),
+          signal: ctrl.signal,
+        });
+        console.log("[claudethis/offscreen] continue complete");
+      } catch (err) {
+        const message = formatAgentError(err);
+        console.error("[claudethis/offscreen] continue failed", message);
         send(raw.featureId, { kind: "error", message });
       } finally {
         inflight.delete(raw.featureId);
@@ -79,7 +128,7 @@ chrome.runtime.onMessage.addListener((raw: AppMessage, _sender, sendResponse) =>
         };
         chrome.runtime.sendMessage(reply).catch(() => {});
       } catch (err) {
-        console.error("[claudethis/offscreen] loadSession failed", err);
+        console.error("[claudethis/offscreen] loadSession failed", err instanceof Error ? err.message : String(err));
       }
     })();
     sendResponse({ ok: true });
@@ -125,7 +174,7 @@ chrome.runtime.onMessage.addListener((raw: AppMessage, _sender, sendResponse) =>
           .catch(() => {});
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        console.error("[claudethis/offscreen] revert failed", err);
+        console.error("[claudethis/offscreen] revert failed", err instanceof Error ? err.message : String(err));
         send(raw.featureId, { kind: "error", message });
       }
     })();

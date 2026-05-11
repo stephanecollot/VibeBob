@@ -1,4 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
+import type { AnthropicBeta } from "@anthropic-ai/sdk/resources/beta/beta.js";
+import type {
+  BetaMessage,
+  BetaMessageParam,
+  BetaToolResultBlockParam,
+  BetaToolUseBlock,
+} from "@anthropic-ai/sdk/resources/beta/messages/messages.js";
 import { SYSTEM_PROMPT } from "./systemPrompt";
 import { getToolDefinitions, dispatchTool, setCurrentFeature } from "./tools";
 import { appendTurn, loadJsonl } from "./session";
@@ -7,16 +14,29 @@ import type { FeatureId, ChatTurn } from "../types";
 
 const DEFAULT_MODEL = "claude-sonnet-4-6";
 const MAX_TOKENS = 4096;
-const MAX_STEPS = 12;
+export const MAX_AGENT_STEPS = 12;
+
+/** Beta header for server-side context compaction (see Anthropic compaction docs). */
+const COMPACTION_BETAS: AnthropicBeta[] = ["compact-2026-01-12"];
+
+/** Compact before input approaches the ~1M hard cap; API minimum trigger is 50k tokens. */
+const COMPACTION_TRIGGER_INPUT_TOKENS = 700_000;
+
+const MAX_TOOL_RESULT_CHARS = 120_000;
 
 export interface RunTurnOpts {
   featureId: FeatureId;
   userMessage: string;
   apiKey: string;
   model?: string;
+  screenshotEnabled?: boolean;
   emit: (event: AgentEvent) => void;
   signal?: AbortSignal;
 }
+
+export type RunContinueOpts = Omit<RunTurnOpts, "userMessage">;
+
+type LoopOpts = RunContinueOpts & { client: Anthropic };
 
 export async function runTurn(opts: RunTurnOpts): Promise<void> {
   const client = new Anthropic({ apiKey: opts.apiKey, dangerouslyAllowBrowser: true });
@@ -24,6 +44,17 @@ export async function runTurn(opts: RunTurnOpts): Promise<void> {
   setCurrentFeature(opts.featureId);
   try {
     await runTurnInner(opts, client);
+  } finally {
+    setCurrentFeature(null);
+  }
+}
+
+export async function runContinueTurn(opts: RunContinueOpts): Promise<void> {
+  const client = new Anthropic({ apiKey: opts.apiKey, dangerouslyAllowBrowser: true });
+
+  setCurrentFeature(opts.featureId);
+  try {
+    await runContinueInner(opts, client);
   } finally {
     setCurrentFeature(null);
   }
@@ -42,52 +73,110 @@ async function runTurnInner(opts: RunTurnOpts, client: Anthropic): Promise<void>
 
   opts.emit({ kind: "turn-start" });
 
+  await runAgentLoop({ ...opts, client }, apiMessages);
+}
+
+async function runContinueInner(opts: RunContinueOpts, client: Anthropic): Promise<void> {
+  const turns = await loadJsonl(opts.featureId);
+  const apiMessages = toApiMessages(turns);
+
+  opts.emit({ kind: "turn-start" });
+
+  await runAgentLoop({ ...opts, client }, apiMessages);
+}
+
+async function runAgentLoop(opts: LoopOpts, apiMessages: BetaMessageParam[]): Promise<void> {
+  const { client } = opts;
   let lastAssistantOid: string | null = null;
 
-  for (let step = 0; step < MAX_STEPS; step++) {
+  const tools = getToolDefinitions().filter(
+    (t) => t.name !== "screenshot" || (opts.screenshotEnabled ?? true),
+  );
+
+  for (let step = 0; step < MAX_AGENT_STEPS; step++) {
     if (opts.signal?.aborted) {
       opts.emit({ kind: "error", message: "cancelled" });
       return;
     }
 
-    const stream = client.messages.stream(
-      {
-        model: opts.model ?? DEFAULT_MODEL,
-        max_tokens: MAX_TOKENS,
-        system: [
-          {
-            type: "text",
-            text: SYSTEM_PROMPT,
-            cache_control: { type: "ephemeral" },
-          },
-        ],
-        tools: getToolDefinitions(),
-        messages: apiMessages,
-      },
-      { signal: opts.signal },
-    );
+    let finalMessage: BetaMessage;
+    let compactionPasses = 0;
 
-    for await (const event of stream) {
-      if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-        opts.emit({ kind: "text-delta", text: event.delta.text });
-      } else if (event.type === "content_block_stop") {
-        opts.emit({ kind: "text-block-end" });
+    do {
+      if (opts.signal?.aborted) {
+        opts.emit({ kind: "error", message: "cancelled" });
+        return;
       }
-    }
 
-    const finalMessage = await stream.finalMessage();
-    apiMessages.push({ role: "assistant", content: finalMessage.content });
+      const stream = client.beta.messages.stream(
+        {
+          model: opts.model ?? DEFAULT_MODEL,
+          max_tokens: MAX_TOKENS,
+          betas: COMPACTION_BETAS,
+          context_management: {
+            edits: [
+              {
+                type: "compact_20260112",
+                trigger: {
+                  type: "input_tokens",
+                  value: COMPACTION_TRIGGER_INPUT_TOKENS,
+                },
+                pause_after_compaction: false,
+              },
+            ],
+          },
+          system: [
+            {
+              type: "text",
+              text: SYSTEM_PROMPT,
+              cache_control: { type: "ephemeral" },
+            },
+          ],
+          tools,
+          messages: apiMessages,
+        },
+        { signal: opts.signal },
+      );
 
-    const oid = await appendTurn(opts.featureId, {
-      role: "assistant",
-      content: finalMessage.content,
-      ts: new Date().toISOString(),
-    });
-    if (oid) lastAssistantOid = oid;
+      for await (const event of stream) {
+        if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+          opts.emit({ kind: "text-delta", text: event.delta.text });
+        } else if (event.type === "content_block_stop") {
+          opts.emit({ kind: "text-block-end" });
+        }
+      }
 
-    const toolUses = finalMessage.content.filter(
-      (b): b is Anthropic.ToolUseBlock => b.type === "tool_use",
-    );
+      finalMessage = await stream.finalMessage();
+      compactionPasses++;
+
+      if (finalMessage.stop_reason === "model_context_window_exceeded") {
+        opts.emit({
+          kind: "error",
+          message:
+            "The model context window was exceeded. Start a new feature or shorten the session.",
+        });
+        return;
+      }
+
+      if (compactionPasses > 24) {
+        opts.emit({
+          kind: "error",
+          message: "Compaction loop limit exceeded — try a new session or smaller task.",
+        });
+        return;
+      }
+
+      apiMessages.push({ role: "assistant", content: finalMessage.content });
+
+      const oid = await appendTurn(opts.featureId, {
+        role: "assistant",
+        content: finalMessage.content,
+        ts: new Date().toISOString(),
+      });
+      if (oid) lastAssistantOid = oid;
+    } while (finalMessage.stop_reason === "compaction");
+
+    const toolUses = finalMessage.content.filter((b): b is BetaToolUseBlock => b.type === "tool_use");
 
     if (toolUses.length === 0 || finalMessage.stop_reason !== "tool_use") {
       opts.emit({
@@ -98,7 +187,7 @@ async function runTurnInner(opts: RunTurnOpts, client: Anthropic): Promise<void>
       return;
     }
 
-    const toolResults: Anthropic.ToolResultBlockParam[] = [];
+    const toolResults: BetaToolResultBlockParam[] = [];
     for (const tu of toolUses) {
       opts.emit({ kind: "tool-call", id: tu.id, name: tu.name, input: tu.input });
       try {
@@ -128,21 +217,31 @@ async function runTurnInner(opts: RunTurnOpts, client: Anthropic): Promise<void>
     });
   }
 
-  opts.emit({ kind: "error", message: `exceeded MAX_STEPS=${MAX_STEPS}` });
+  opts.emit({ kind: "max-steps", steps: MAX_AGENT_STEPS });
 }
 
 function stringify(v: unknown): string {
-  if (typeof v === "string") return v;
-  try {
-    return JSON.stringify(v);
-  } catch {
-    return String(v);
+  if (typeof v === "string") {
+    return truncateToolString(v);
   }
+  if (v === undefined) return "undefined";
+  try {
+    const s = JSON.stringify(v);
+    if (s !== undefined) return truncateToolString(s);
+  } catch {
+    /* fall through */
+  }
+  return truncateToolString(String(v));
 }
 
-function toApiMessages(turns: ChatTurn[]): Anthropic.MessageParam[] {
+function truncateToolString(s: string): string {
+  if (s.length <= MAX_TOOL_RESULT_CHARS) return s;
+  return `${s.slice(0, MAX_TOOL_RESULT_CHARS - 80)}\n\n… [truncated]`;
+}
+
+function toApiMessages(turns: ChatTurn[]): BetaMessageParam[] {
   return turns.map((t) => ({
     role: t.role,
-    content: t.content as Anthropic.MessageParam["content"],
+    content: t.content as BetaMessageParam["content"],
   }));
 }
