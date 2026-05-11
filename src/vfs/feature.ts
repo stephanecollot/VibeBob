@@ -35,7 +35,7 @@ async function notifyFeatureChanged(id: FeatureId): Promise<void> {
   try {
     await chrome.runtime.sendMessage(msg);
   } catch (err) {
-    console.warn("[claudethis/vfs] feature.sync failed", err);
+    console.warn("[vibebob/vfs] feature.sync failed", err);
   }
 }
 

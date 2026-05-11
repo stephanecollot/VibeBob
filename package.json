@@ -1,11 +1,20 @@
 {
-  "name": "claudethis",
+  "name": "vibebob",
   "private": true,
+  "homepage": "https://github.com/stephanecollot/VibeBob",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/stephanecollot/VibeBob.git"
+  },
+  "bugs": {
+    "url": "https://github.com/stephanecollot/VibeBob/issues"
+  },
   "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "package": "pnpm build && cd dist && zip -r ../vibebob.zip . -x '*.map'",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit"
   },
@@ -26,6 +35,7 @@
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.0.0-beta.28",
     "@types/chrome": "^0.0.287",
+    "@types/node": "^25.6.2",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",

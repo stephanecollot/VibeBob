@@ -15,8 +15,8 @@ function pushError(featureId: string, message: string, stack?: string): void {
 
 window.addEventListener("message", (e) => {
   if (e.source !== window) return;
-  const data = e.data as { __claudethis?: string; featureId?: string; message?: string; stack?: string };
-  if (!data || data.__claudethis !== "mod-error") return;
+  const data = e.data as { __vibebob?: string; featureId?: string; message?: string; stack?: string };
+  if (!data || data.__vibebob !== "mod-error") return;
   if (typeof data.featureId !== "string" || typeof data.message !== "string") return;
   pushError(data.featureId, data.message, data.stack);
 });

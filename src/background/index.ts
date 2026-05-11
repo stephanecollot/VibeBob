@@ -8,7 +8,7 @@ import type { AppMessage } from "../types/messages";
 chrome.runtime.onInstalled.addListener(() => {
   chrome.sidePanel
     .setPanelBehavior({ openPanelOnActionClick: true })
-    .catch((err) => console.error("[claudethis] sidePanel.setPanelBehavior", err));
+    .catch((err) => console.error("[vibebob] sidePanel.setPanelBehavior", err));
 });
 
 attachRouter();
@@ -161,7 +161,7 @@ chrome.runtime.onMessage.addListener((msg: AppMessage, _sender, sendResponse) =>
       .then((result) => sendResponse({ ok: true, result }))
       .catch((err) => {
         const message = err instanceof Error ? err.message : String(err);
-        console.error("[claudethis/bg] browser tool failed", msg.tool, err);
+        console.error("[vibebob/bg] browser tool failed", msg.tool, err);
         sendResponse({ ok: false, error: message });
       });
     return true;

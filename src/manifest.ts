@@ -3,11 +3,21 @@ import pkg from "../package.json" with { type: "json" };
 
 export default defineManifest({
   manifest_version: 3,
-  name: "ClaudeThis",
-  description: "Add custom features to any website by chatting with Claude.",
+  name: "VibeBob",
+  description: "Add custom features to any website by chatting with AI.",
   version: pkg.version,
+  icons: {
+    "16": "src/assets/icon16.png",
+    "48": "src/assets/icon48.png",
+    "128": "src/assets/icon128.png",
+  },
   action: {
-    default_title: "ClaudeThis",
+    default_title: "VibeBob",
+    default_icon: {
+      "16": "src/assets/icon16.png",
+      "48": "src/assets/icon48.png",
+      "128": "src/assets/icon128.png",
+    },
   },
   side_panel: {
     default_path: "src/sidepanel/index.html",
@@ -43,5 +53,6 @@ export default defineManifest({
   content_security_policy: {
     extension_pages: "script-src 'self'; connect-src https://api.anthropic.com;",
   },
+  homepage_url: "https://github.com/stephanecollot/VibeBob",
   minimum_chrome_version: "116",
 });

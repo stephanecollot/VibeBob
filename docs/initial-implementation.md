@@ -1,6 +1,6 @@
 # Initial implementation — bugs and dead ends
 
-A field log of what broke during the initial v0.1.0 build of ClaudeThis, what we
+A field log of what broke during the initial v0.1.0 build of VibeBob, what we
 tried, and what worked. Roughly chronological, grouped by phase.
 
 ## Tooling
@@ -186,7 +186,7 @@ after install) is deferred.
 Because the mod runs in MAIN world (page context) but error-tracking lives in
 the content script (isolated world), they communicate via `window.postMessage`.
 Both worlds share the same `window` and the message-event listener fires in
-both. The mod's `ctx.error(err)` posts a `{__claudethis: "mod-error", ...}`
+both. The mod's `ctx.error(err)` posts a `{__vibebob: "mod-error", ...}`
 message, the isolated-world listener filters by tag and stores in a per-feature
 errors map. `get_mod_errors` reads the map.
 

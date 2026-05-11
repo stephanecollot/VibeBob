@@ -18,7 +18,7 @@ export async function ensureOffscreen(): Promise<void> {
     .createDocument({
       url: OFFSCREEN_PATH,
       reasons: ["WORKERS" as chrome.offscreen.Reason],
-      justification: "Hosts the long-running ClaudeThis agent loop and VFS.",
+      justification: "Hosts the long-running VibeBob agent loop and VFS.",
     })
     .finally(() => {
       creating = null;

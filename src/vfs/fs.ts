@@ -1,6 +1,6 @@
 import LightningFS from "@isomorphic-git/lightning-fs";
 
-const fs = new LightningFS("claudethis");
+const fs = new LightningFS("vibebob");
 export const pfs = fs.promises;
 export const lfs = fs;
 

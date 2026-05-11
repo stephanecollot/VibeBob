@@ -51,7 +51,7 @@ export function App() {
         {view === "home" && (
           <div className="flex items-center justify-between">
             <h1 className="text-lg font-semibold tracking-tight text-gray-900">
-              ClaudeThis
+              VibeBob
             </h1>
             <div className="flex items-center gap-2">
               <button

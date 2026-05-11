@@ -14,7 +14,7 @@ import type { FeatureId, ChatTurn } from "../types";
 
 const DEFAULT_MODEL = "claude-sonnet-4-6";
 const MAX_TOKENS = 4096;
-export const MAX_AGENT_STEPS = 12;
+export const MAX_AGENT_STEPS = 50;
 
 /** Beta header for server-side context compaction (see Anthropic compaction docs). */
 const COMPACTION_BETAS: AnthropicBeta[] = ["compact-2026-01-12"];

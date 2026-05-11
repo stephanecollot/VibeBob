@@ -286,7 +286,7 @@ export function Chat({ featureId }: Props) {
             const next = e.target.checked;
             setScreenshotEnabled(next);
             setFeatureScreenshotEnabled(featureId, next).catch((err) => {
-              console.error("[claudethis/chat] persist screenshot failed", err);
+              console.error("[vibebob/chat] persist screenshot failed", err);
             });
           }}
           className="h-3.5 w-3.5 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"

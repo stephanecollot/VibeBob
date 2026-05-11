@@ -43,12 +43,12 @@ export function applyBootstrap(
     onCleanup: (fn: () => void) => {
       if (typeof fn === "function") reg.cleanups[featureId].push(fn);
     },
-    log: (m: unknown) => console.log(`[claudethis/mod ${featureId.slice(0, 8)}]`, m),
+    log: (m: unknown) => console.log(`[vibebob/mod ${featureId.slice(0, 8)}]`, m),
     error: (err: unknown) => {
       const e = err as { message?: string; stack?: string };
       window.postMessage(
         {
-          __claudethis: "mod-error",
+          __vibebob: "mod-error",
           featureId,
           message: (e && e.message) || String(err),
           stack: e && e.stack,
@@ -75,13 +75,13 @@ export function applyBootstrap(
     if (typeof entry.apply === "function") {
       try { entry.apply(ctx); }
       catch (err) {
-        window.postMessage({ __claudethis: "mod-error", featureId: ${idJson}, message: "apply(): " + ((err && err.message) || String(err)), stack: err && err.stack }, "*");
+        window.postMessage({ __vibebob: "mod-error", featureId: ${idJson}, message: "apply(): " + ((err && err.message) || String(err)), stack: err && err.stack }, "*");
       }
     } else {
-      window.postMessage({ __claudethis: "mod-error", featureId: ${idJson}, message: "no apply() defined" }, "*");
+      window.postMessage({ __vibebob: "mod-error", featureId: ${idJson}, message: "no apply() defined" }, "*");
     }
   } catch (err) {
-    window.postMessage({ __claudethis: "mod-error", featureId: ${idJson}, message: "compile: " + ((err && err.message) || String(err)), stack: err && err.stack }, "*");
+    window.postMessage({ __vibebob: "mod-error", featureId: ${idJson}, message: "compile: " + ((err && err.message) || String(err)), stack: err && err.stack }, "*");
   }
 })();
 `;
@@ -96,7 +96,7 @@ export function applyBootstrap(
     URL.revokeObjectURL(url);
     window.postMessage(
       {
-        __claudethis: "mod-error",
+        __vibebob: "mod-error",
         featureId,
         message:
           "blob: <script src> blocked by page CSP. Page must allow 'self' or 'blob:' in script-src.",

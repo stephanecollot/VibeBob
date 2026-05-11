@@ -2,7 +2,7 @@
 
 > **Working name: Vibe.** A Chrome extension that lets users add small custom features to any website by chatting with an AI agent. Hand this document to Claude Code to bootstrap the project.
 
-Name: ClaudeThis
+Name: VibeBob
 
 ---
 

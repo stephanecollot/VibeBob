@@ -2,7 +2,7 @@ import { handlers as inspectorHandlers } from "./inspector";
 import { modHandlers } from "./injector";
 import type { AppMessage } from "../types/messages";
 
-console.log("[claudethis/content] loaded on", location.href);
+console.log("[vibebob/content] loaded on", location.href);
 
 const allHandlers: Record<string, (input: any) => unknown> = {
   ...inspectorHandlers,

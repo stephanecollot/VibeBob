@@ -14,14 +14,14 @@ import type { FeatureId } from "../types";
 registerBrowserTools();
 registerFsTools();
 registerRuntimeTools();
-console.log("[claudethis/offscreen] booted at", new Date().toISOString());
+console.log("[vibebob/offscreen] booted at", new Date().toISOString());
 
 const inflight = new Map<FeatureId, AbortController>();
 
 function send(featureId: FeatureId, event: AgentEvent): void {
   const msg: AppMessage = { type: "agent.event", target: "sidepanel", featureId, event };
   chrome.runtime.sendMessage(msg).catch((e) => {
-    console.warn("[claudethis/offscreen] send failed", e instanceof Error ? e.message : String(e));
+    console.warn("[vibebob/offscreen] send failed", e instanceof Error ? e.message : String(e));
   });
 }
 
@@ -37,7 +37,7 @@ function formatAgentError(err: unknown): string {
 
 chrome.runtime.onMessage.addListener((raw: AppMessage, _sender, sendResponse) => {
   if (!raw || typeof raw !== "object" || raw.target !== "offscreen") return false;
-  console.log("[claudethis/offscreen] received", raw.type);
+  console.log("[vibebob/offscreen] received", raw.type);
 
   if (raw.type === "agent.startTurn") {
     const ctrl = new AbortController();
@@ -48,7 +48,7 @@ chrome.runtime.onMessage.addListener((raw: AppMessage, _sender, sendResponse) =>
       try {
         const { apiKey, screenshotEnabled: screenshotEnabledFromMsg } = raw;
         if (!apiKey) throw new Error("no API key — open Settings and save");
-        console.log("[claudethis/offscreen] starting turn", {
+        console.log("[vibebob/offscreen] starting turn", {
           model: raw.model,
           featureId: raw.featureId,
           screenshotEnabled: screenshotEnabledFromMsg,
@@ -62,10 +62,10 @@ chrome.runtime.onMessage.addListener((raw: AppMessage, _sender, sendResponse) =>
           emit: (event) => send(raw.featureId, event),
           signal: ctrl.signal,
         });
-        console.log("[claudethis/offscreen] turn complete");
+        console.log("[vibebob/offscreen] turn complete");
       } catch (err) {
         const message = formatAgentError(err);
-        console.error("[claudethis/offscreen] turn failed", message);
+        console.error("[vibebob/offscreen] turn failed", message);
         send(raw.featureId, { kind: "error", message });
       } finally {
         inflight.delete(raw.featureId);
@@ -84,7 +84,7 @@ chrome.runtime.onMessage.addListener((raw: AppMessage, _sender, sendResponse) =>
       try {
         const { apiKey, screenshotEnabled: screenshotEnabledFromMsg } = raw;
         if (!apiKey) throw new Error("no API key — open Settings and save");
-        console.log("[claudethis/offscreen] continuing turn", {
+        console.log("[vibebob/offscreen] continuing turn", {
           model: raw.model,
           featureId: raw.featureId,
           screenshotEnabled: screenshotEnabledFromMsg,
@@ -97,10 +97,10 @@ chrome.runtime.onMessage.addListener((raw: AppMessage, _sender, sendResponse) =>
           emit: (event) => send(raw.featureId, event),
           signal: ctrl.signal,
         });
-        console.log("[claudethis/offscreen] continue complete");
+        console.log("[vibebob/offscreen] continue complete");
       } catch (err) {
         const message = formatAgentError(err);
-        console.error("[claudethis/offscreen] continue failed", message);
+        console.error("[vibebob/offscreen] continue failed", message);
         send(raw.featureId, { kind: "error", message });
       } finally {
         inflight.delete(raw.featureId);
@@ -128,7 +128,7 @@ chrome.runtime.onMessage.addListener((raw: AppMessage, _sender, sendResponse) =>
         };
         chrome.runtime.sendMessage(reply).catch(() => {});
       } catch (err) {
-        console.error("[claudethis/offscreen] loadSession failed", err instanceof Error ? err.message : String(err));
+        console.error("[vibebob/offscreen] loadSession failed", err instanceof Error ? err.message : String(err));
       }
     })();
     sendResponse({ ok: true });
@@ -174,7 +174,7 @@ chrome.runtime.onMessage.addListener((raw: AppMessage, _sender, sendResponse) =>
           .catch(() => {});
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        console.error("[claudethis/offscreen] revert failed", err instanceof Error ? err.message : String(err));
+        console.error("[vibebob/offscreen] revert failed", err instanceof Error ? err.message : String(err));
         send(raw.featureId, { kind: "error", message });
       }
     })();

@@ -24,7 +24,7 @@ function scheduleEvaluate(tabId: number, url: string): void {
   const next = prev
     .catch(() => {})
     .then(() => evaluateTab(tabId, url))
-    .catch((e) => console.error("[claudethis/router]", e));
+    .catch((e) => console.error("[vibebob/router]", e));
   evalQueue.set(tabId, next);
   next.finally(() => {
     if (evalQueue.get(tabId) === next) evalQueue.delete(tabId);
@@ -52,7 +52,7 @@ async function evaluateTab(tabId: number, url: string): Promise<void> {
           args: [id],
         });
       } catch (err) {
-        console.warn("[claudethis/router] unapply failed", id, err);
+        console.warn("[vibebob/router] unapply failed", id, err);
       }
     }
   }
@@ -70,7 +70,7 @@ async function evaluateTab(tabId: number, url: string): Promise<void> {
       });
       nowApplied.push(f.id);
     } catch (err) {
-      console.warn("[claudethis/router] apply failed", f.id, err);
+      console.warn("[vibebob/router] apply failed", f.id, err);
     }
   }
   await setApplied(tabId, nowApplied);

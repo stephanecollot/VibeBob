@@ -3,7 +3,7 @@ import { lfs as fs } from "../vfs/fs";
 import { featureDir, listFiles } from "../vfs";
 import type { FeatureId } from "../types";
 
-const author = { name: "claudethis", email: "agent@claudethis.local" };
+const author = { name: "vibebob", email: "agent@vibebob.local" };
 
 export interface CommitInfo {
   oid: string;
