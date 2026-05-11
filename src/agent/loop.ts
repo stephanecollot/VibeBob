@@ -239,9 +239,46 @@ function truncateToolString(s: string): string {
   return `${s.slice(0, MAX_TOOL_RESULT_CHARS - 80)}\n\n… [truncated]`;
 }
 
+/**
+ * Convert persisted turns to API messages, inserting synthetic tool_result
+ * blocks wherever an assistant turn with tool_use is not immediately followed
+ * by a user turn containing matching tool_result blocks.
+ */
 function toApiMessages(turns: ChatTurn[]): BetaMessageParam[] {
-  return turns.map((t) => ({
-    role: t.role,
-    content: t.content as BetaMessageParam["content"],
-  }));
+  const out: BetaMessageParam[] = [];
+
+  for (let i = 0; i < turns.length; i++) {
+    const t = turns[i];
+    out.push({ role: t.role, content: t.content as BetaMessageParam["content"] });
+
+    if (t.role !== "assistant" || !Array.isArray(t.content)) continue;
+
+    const toolUseIds = (t.content as Array<Record<string, unknown>>)
+      .filter((b) => b.type === "tool_use" && typeof b.id === "string")
+      .map((b) => b.id as string);
+    if (toolUseIds.length === 0) continue;
+
+    const next = turns[i + 1];
+    const coveredIds = new Set<string>();
+    if (next?.role === "user" && Array.isArray(next.content)) {
+      for (const b of next.content as Array<Record<string, unknown>>) {
+        if (b.type === "tool_result" && typeof b.tool_use_id === "string") {
+          coveredIds.add(b.tool_use_id);
+        }
+      }
+    }
+
+    const missing = toolUseIds.filter((id) => !coveredIds.has(id));
+    if (missing.length > 0) {
+      const repairs: BetaToolResultBlockParam[] = missing.map((id) => ({
+        type: "tool_result" as const,
+        tool_use_id: id,
+        content: "Tool execution was interrupted (cancelled or crashed).",
+        is_error: true,
+      }));
+      out.push({ role: "user", content: repairs });
+    }
+  }
+
+  return out;
 }

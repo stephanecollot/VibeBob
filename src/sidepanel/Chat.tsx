@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  ArrowPathIcon,
   ArrowUturnLeftIcon,
   CheckIcon,
   PaperAirplaneIcon,
@@ -29,12 +30,23 @@ interface DisplayMessage {
 
 interface Props {
   featureId: FeatureId;
+  onBusyChange?: (busy: boolean) => void;
 }
 
-export function Chat({ featureId }: Props) {
+export function Chat({ featureId, onBusyChange }: Props) {
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [input, setInput] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [busy, _setBusy] = useState(false);
+  const onBusyChangeRef = useRef(onBusyChange);
+  onBusyChangeRef.current = onBusyChange;
+
+  function setBusy(v: boolean | ((prev: boolean) => boolean)) {
+    _setBusy((prev) => {
+      const next = typeof v === "function" ? v(prev) : v;
+      if (next !== prev) onBusyChangeRef.current?.(next);
+      return next;
+    });
+  }
   const [err, setErr] = useState<string | null>(null);
   const [maxStepsPrompt, setMaxStepsPrompt] = useState<number | null>(null);
   const [screenshotEnabled, setScreenshotEnabled] = useState(true);
@@ -254,6 +266,7 @@ export function Chat({ featureId }: Props) {
         {messages.map((m) => (
           <MessageView key={m.id} m={m} onRevert={onRevert} />
         ))}
+        {busy && <ThinkingIndicator messages={messages} />}
         {maxStepsPrompt !== null && (
           <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-amber-950">
             <p className="text-[15px] leading-snug">
@@ -369,7 +382,7 @@ function MessageView({
       </div>
     );
   }
-  const StatusIcon = m.pending ? PlayIcon : m.toolError ? XMarkIcon : CheckIcon;
+  const StatusIcon = m.pending ? ArrowPathIcon : m.toolError ? XMarkIcon : CheckIcon;
   return (
     <div
       className={`rounded-md border px-2.5 py-1.5 font-mono text-[13px] ${
@@ -381,7 +394,10 @@ function MessageView({
           m.toolError ? "text-red-600" : "text-gray-600"
         }`}
       >
-        <StatusIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
+        <StatusIcon
+          className={`h-4 w-4 shrink-0${m.pending ? " animate-spin" : ""}`}
+          aria-hidden="true"
+        />
         <span className="truncate">{m.toolName}</span>
       </div>
       <details className="mt-1.5">
@@ -404,6 +420,25 @@ function MessageView({
           </pre>
         </details>
       )}
+    </div>
+  );
+}
+
+function ThinkingIndicator({ messages }: { messages: DisplayMessage[] }) {
+  const last = messages[messages.length - 1];
+  const isStreaming =
+    last?.role === "assistant" && last.pending && last.text.length > 0;
+  const isPendingTool = last?.role === "tool" && last.pending;
+  if (isStreaming || isPendingTool) return null;
+
+  return (
+    <div className="flex items-center gap-2 text-emerald-600">
+      <div className="thinking-dots flex gap-1">
+        <span />
+        <span />
+        <span />
+      </div>
+      <span className="text-sm text-gray-400">working</span>
     </div>
   );
 }

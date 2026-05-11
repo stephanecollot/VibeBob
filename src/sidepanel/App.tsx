@@ -21,6 +21,7 @@ export function App() {
   const [prevView, setPrevView] = useState<View>("home");
   const [wsTab, setWsTab] = useState<WorkspaceTab>("chat");
   const [active, setActive] = useState<FeatureId | null>(null);
+  const [agentBusy, setAgentBusy] = useState(false);
 
   function goSettings() {
     setPrevView(view);
@@ -74,6 +75,12 @@ export function App() {
             <div className="flex min-w-0 items-center gap-2">
               <IconButton icon={ArrowLeftIcon} onClick={goBack} title="back" />
               <FeatureTitle featureId={active} />
+              {agentBusy && (
+                <span
+                  className="h-2 w-2 shrink-0 rounded-full bg-emerald-500 animate-pulse-slow"
+                  title="agent working"
+                />
+              )}
               <IconButton
                 icon={Cog6ToothIcon}
                 onClick={goSettings}
@@ -109,7 +116,7 @@ export function App() {
       <main className="min-h-0 flex-1 overflow-y-auto p-4 text-gray-700">
         {view === "home" && <FeatureList onSelect={onSelect} />}
         {view === "workspace" && active && wsTab === "chat" && (
-          <Chat featureId={active} />
+          <Chat featureId={active} onBusyChange={setAgentBusy} />
         )}
         {view === "workspace" && active && wsTab === "dev" && (
           <DevPanel featureId={active} />
