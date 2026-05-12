@@ -3,17 +3,19 @@ import {
   ArrowLeftIcon,
   Cog6ToothIcon,
   PlusIcon,
+  ShoppingBagIcon,
 } from "@heroicons/react/24/outline";
 import { DevPanel } from "./DevPanel";
 import { Chat } from "./Chat";
 import { Settings } from "./Settings";
 import { FeatureList } from "./FeatureList";
 import { FeatureTitle } from "./FeatureTitle";
+import { Marketplace } from "./Marketplace";
 import { IconButton } from "./ui";
 import { createFeature } from "../vfs/feature";
 import type { FeatureId } from "../types";
 
-type View = "home" | "workspace" | "settings";
+type View = "home" | "workspace" | "settings" | "marketplace";
 type WorkspaceTab = "chat" | "dev";
 
 export function App() {
@@ -29,7 +31,22 @@ export function App() {
   }
 
   function goBack() {
-    setView(view === "settings" ? prevView : "home");
+    if (view === "settings" || view === "marketplace") {
+      setView(prevView);
+    } else {
+      setView("home");
+    }
+  }
+
+  function goMarketplace() {
+    setPrevView(view);
+    setView("marketplace");
+  }
+
+  function onMarketplaceInstalled(id: FeatureId) {
+    setActive(id);
+    setWsTab("chat");
+    setView("workspace");
   }
 
   async function onNew() {
@@ -62,11 +79,20 @@ export function App() {
                 <PlusIcon className="h-4 w-4" aria-hidden="true" />
                 new
               </button>
-              <IconButton
-                icon={Cog6ToothIcon}
+              <button
+                onClick={goMarketplace}
+                className="inline-flex items-center gap-1 rounded-md bg-violet-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-violet-500 transition-colors"
+              >
+                <ShoppingBagIcon className="h-4 w-4" aria-hidden="true" />
+                market
+              </button>
+              <button
                 onClick={goSettings}
-                title="settings"
-              />
+                className="inline-flex items-center gap-1 rounded-md bg-gray-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-gray-500 transition-colors"
+              >
+                <Cog6ToothIcon className="h-4 w-4" aria-hidden="true" />
+                settings
+              </button>
             </div>
           </div>
         )}
@@ -104,6 +130,14 @@ export function App() {
             </div>
           </div>
         )}
+        {view === "marketplace" && (
+          <div className="flex items-center gap-2">
+            <IconButton icon={ArrowLeftIcon} onClick={goBack} title="back" />
+            <h1 className="text-lg font-semibold tracking-tight text-gray-900">
+              Marketplace
+            </h1>
+          </div>
+        )}
         {view === "settings" && (
           <div className="flex items-center gap-2">
             <IconButton icon={ArrowLeftIcon} onClick={goBack} title="back" />
@@ -119,7 +153,10 @@ export function App() {
           <Chat featureId={active} onBusyChange={setAgentBusy} />
         )}
         {view === "workspace" && active && wsTab === "dev" && (
-          <DevPanel featureId={active} />
+          <DevPanel featureId={active} onDeleted={() => setView("home")} />
+        )}
+        {view === "marketplace" && (
+          <Marketplace onInstalled={onMarketplaceInstalled} />
         )}
         {view === "settings" && <Settings />}
       </main>

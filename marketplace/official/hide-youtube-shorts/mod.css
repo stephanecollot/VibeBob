@@ -1,0 +1,40 @@
+/* ===== Hide Shorts sidebar entry ===== */
+/* Target the guide entry renderer that contains a Shorts anchor */
+ytd-guide-entry-renderer:has(a[title="Shorts"]) {
+  display: none !important;
+}
+ytd-guide-entry-renderer:has(a[href="/shorts"]) {
+  display: none !important;
+}
+
+/* ===== Hide Shorts in mini guide (collapsed sidebar) ===== */
+ytd-mini-guide-entry-renderer:has(a[href="/shorts"]) {
+  display: none !important;
+}
+ytd-mini-guide-entry-renderer:has(a[title="Shorts"]) {
+  display: none !important;
+}
+
+/* ===== Hide Shorts shelves on home feed ===== */
+ytd-reel-shelf-renderer {
+  display: none !important;
+}
+ytd-rich-shelf-renderer[is-shorts] {
+  display: none !important;
+}
+
+/* ===== Hide individual Shorts items ===== */
+ytd-reel-item-renderer {
+  display: none !important;
+}
+
+/* ===== Hide entire Shorts page ===== */
+ytd-shorts,
+ytd-browse[page-subtype="shorts"] {
+  display: none !important;
+}
+
+/* ===== Hide "Shorts" chip in the feed filter bar ===== */
+yt-chip-cloud-chip-renderer:has([title="Shorts"]) {
+  display: none !important;
+}

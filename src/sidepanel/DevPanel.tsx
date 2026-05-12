@@ -2,16 +2,88 @@ import { useEffect, useState } from "react";
 import {
   ArrowUturnLeftIcon,
   TrashIcon,
+  ArrowDownTrayIcon,
 } from "@heroicons/react/20/solid";
 import * as vfs from "../vfs";
 import * as gitLayer from "../git";
-import { writeFileAndCommit, deleteFileAndCommit } from "../vfs/feature";
+import { writeFileAndCommit, deleteFileAndCommit, deleteFeatureFully } from "../vfs/feature";
 import { IconButton } from "./ui";
 import type { FeatureId, Manifest } from "../types";
 
 interface FeatureState {
   files: string[];
   commits: gitLayer.CommitInfo[];
+}
+
+function toAB(u8: Uint8Array): ArrayBuffer {
+  return (u8.buffer as ArrayBuffer).slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
+}
+
+function buildZip(entries: { name: string; data: Uint8Array }[]): Blob {
+  const parts: ArrayBuffer[] = [];
+  const directory: { offset: number; header: ArrayBuffer }[] = [];
+  let offset = 0;
+
+  for (const { name, data } of entries) {
+    const nameBytes = new TextEncoder().encode(name);
+    const crc = crc32(data);
+
+    const local = new Uint8Array(30 + nameBytes.length + data.length);
+    const lv = new DataView(local.buffer);
+    lv.setUint32(0, 0x04034b50, true);
+    lv.setUint16(4, 20, true);
+    lv.setUint32(14, crc, true);
+    lv.setUint32(18, data.length, true);
+    lv.setUint32(22, data.length, true);
+    lv.setUint16(26, nameBytes.length, true);
+    local.set(nameBytes, 30);
+    local.set(data, 30 + nameBytes.length);
+
+    const central = new Uint8Array(46 + nameBytes.length);
+    const cv = new DataView(central.buffer);
+    cv.setUint32(0, 0x02014b50, true);
+    cv.setUint16(4, 20, true);
+    cv.setUint16(6, 20, true);
+    cv.setUint32(16, crc, true);
+    cv.setUint32(20, data.length, true);
+    cv.setUint32(24, data.length, true);
+    cv.setUint16(28, nameBytes.length, true);
+    cv.setUint32(42, offset, true);
+    central.set(nameBytes, 46);
+
+    parts.push(toAB(local));
+    directory.push({ offset, header: toAB(central) });
+    offset += local.length;
+  }
+
+  const dirStart = offset;
+  let dirSize = 0;
+  for (const { header } of directory) {
+    parts.push(header);
+    dirSize += header.byteLength;
+  }
+
+  const end = new Uint8Array(22);
+  const ev = new DataView(end.buffer);
+  ev.setUint32(0, 0x06054b50, true);
+  ev.setUint16(8, directory.length, true);
+  ev.setUint16(10, directory.length, true);
+  ev.setUint32(12, dirSize, true);
+  ev.setUint32(16, dirStart, true);
+  parts.push(toAB(end));
+
+  return new Blob(parts, { type: "application/zip" });
+}
+
+function crc32(data: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (let i = 0; i < data.length; i++) {
+    crc ^= data[i];
+    for (let j = 0; j < 8; j++) {
+      crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
 }
 
 const DEFAULT_PATH = "mod.js";
@@ -30,18 +102,26 @@ function stubManifest(id: FeatureId, name: string): Manifest {
   };
 }
 
-export function DevPanel({ featureId }: { featureId: FeatureId }) {
+export function DevPanel({
+  featureId,
+  onDeleted,
+}: {
+  featureId: FeatureId;
+  onDeleted?: () => void;
+}) {
   const [state, setState] = useState<FeatureState | null>(null);
   const [matchesText, setMatchesText] = useState("");
   const [filePath, setFilePath] = useState(DEFAULT_PATH);
   const [contents, setContents] = useState("");
-  /** Last known on-disk contents for the open path (after open or successful save). */
   const [diskSnapshot, setDiskSnapshot] = useState<{
     path: string;
     content: string;
   } | null>(null);
   const [openLoadingPath, setOpenLoadingPath] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [vfsMissing, setVfsMissing] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [featureName, setFeatureName] = useState("Untitled");
 
   const dirty =
     diskSnapshot === null
@@ -70,10 +150,15 @@ export function DevPanel({ featureId }: { featureId: FeatureId }) {
       ]);
       setState({ files, commits });
       setMatchesText((manifest.matches ?? []).join("\n"));
+      setFeatureName(manifest.name || "Untitled");
     } catch (e) {
-      const message = e instanceof Error ? `${e.message}\n${e.stack ?? ""}` : String(e);
+      const message = e instanceof Error ? e.message : String(e);
       console.error("[DevPanel.refresh]", e);
-      setErr(message);
+      if (message.includes("ENOENT")) {
+        setVfsMissing(true);
+      } else {
+        setErr(e instanceof Error ? `${message}\n${e.stack ?? ""}` : message);
+      }
       setState({ files: [], commits: [] });
     }
   }
@@ -150,6 +235,59 @@ export function DevPanel({ featureId }: { featureId: FeatureId }) {
     }
   }
 
+  async function onExport() {
+    setExporting(true);
+    setErr(null);
+    try {
+      const fileList = await vfs.listFiles(featureId);
+      const files: Record<string, string> = {};
+      for (const f of fileList) {
+        if (f === "session.jsonl") continue;
+        files[f] = await vfs.readFile(featureId, f);
+      }
+
+      if (files["manifest.json"]) {
+        const manifest = JSON.parse(files["manifest.json"]);
+        delete manifest.id;
+        delete manifest.createdAt;
+        delete manifest.updatedAt;
+        delete manifest.source;
+        files["manifest.json"] = JSON.stringify(manifest, null, 2);
+      }
+
+      if (!files["README.md"]) {
+        const manifest = files["manifest.json"]
+          ? JSON.parse(files["manifest.json"])
+          : {};
+        files["README.md"] = `# ${manifest.name ?? "Untitled Mod"}\n\n${manifest.description ?? ""}\n`;
+      }
+
+      const slug = featureName
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "") || "mod";
+
+      const parts: { name: string; data: Uint8Array }[] = [];
+      for (const [name, content] of Object.entries(files)) {
+        parts.push({ name: `${slug}/${name}`, data: new TextEncoder().encode(content) });
+      }
+
+      const blob = buildZip(parts);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${slug}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      const message = e instanceof Error ? `${e.message}\n${e.stack ?? ""}` : String(e);
+      console.error("[DevPanel.onExport]", e);
+      setErr(message);
+    } finally {
+      setExporting(false);
+    }
+  }
+
   async function onSaveMatches() {
     const patterns = matchesText
       .split("\n")
@@ -190,6 +328,25 @@ export function DevPanel({ featureId }: { featureId: FeatureId }) {
 
   return (
     <div className="space-y-5">
+      {vfsMissing && (
+        <div className="rounded-md bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <p className="font-medium">Feature data not found</p>
+          <p className="mt-1 text-amber-600">
+            This feature's files were lost (likely after an extension rebuild).
+            You can delete it and create a new one.
+          </p>
+          <button
+            type="button"
+            onClick={async () => {
+              await deleteFeatureFully(featureId);
+              onDeleted?.();
+            }}
+            className="mt-2 rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-red-500 transition-colors"
+          >
+            Delete this feature
+          </button>
+        </div>
+      )}
       {err && (
         <div className="whitespace-pre-wrap rounded-md bg-red-50 px-3 py-2 font-mono text-[13px] text-red-600">
           {err}
@@ -322,6 +479,26 @@ export function DevPanel({ featureId }: { featureId: FeatureId }) {
                 </li>
               ))}
             </ul>
+          </section>
+
+          <section>
+            <h2 className="mb-2 text-[12px] font-semibold uppercase tracking-wider text-gray-500">
+              export for marketplace
+            </h2>
+            <p className="mb-2 text-[13px] text-gray-500">
+              Download this mod as a zip, then add it to the{" "}
+              <code className="font-mono text-gray-600">marketplace/</code> folder
+              via a pull request on GitHub.
+            </p>
+            <button
+              type="button"
+              disabled={exporting}
+              onClick={() => void onExport()}
+              className="inline-flex items-center gap-1.5 rounded-md bg-violet-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-violet-500 transition-colors disabled:opacity-50"
+            >
+              <ArrowDownTrayIcon className="h-4 w-4" />
+              {exporting ? "Exporting..." : "Export zip"}
+            </button>
           </section>
         </>
       )}

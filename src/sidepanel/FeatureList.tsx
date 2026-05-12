@@ -41,7 +41,7 @@ export function FeatureList({ onSelect }: Props) {
   if (features.length === 0) {
     return (
       <p className="text-gray-400">
-        No features yet. Click "new" to start.
+        No features yet. Click "new" to create your first feature. Or click "market" to browse the marketplace and install a feature.
       </p>
     );
   }

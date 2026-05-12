@@ -1,5 +1,10 @@
 export type FeatureId = string;
 
+export interface MarketplaceSource {
+  github: string;
+  path: string;
+}
+
 export interface Manifest {
   id: FeatureId;
   name: string;
@@ -12,13 +17,32 @@ export interface Manifest {
   createdAt: string;
   updatedAt: string;
   capabilities?: string[];
-  source?: { github?: string; commit?: string };
+  source?: MarketplaceSource;
 }
 
 export interface Feature {
   manifest: Manifest;
   enabled: boolean;
   broken?: boolean;
+}
+
+export interface MarketplaceMod {
+  namespace: string;
+  slug: string;
+  manifest: {
+    name: string;
+    description: string;
+    matches: string[];
+    entry: string;
+    styles?: string;
+    version: string;
+    author?: string;
+  };
+}
+
+export interface MarketplaceCatalog {
+  mods: MarketplaceMod[];
+  fetchedAt: number;
 }
 
 export type Role = "user" | "assistant";

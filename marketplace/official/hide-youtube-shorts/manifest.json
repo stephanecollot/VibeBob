@@ -1,0 +1,8 @@
+{
+  "name": "Hide YouTube Shorts",
+  "description": "Removes YouTube Shorts from the sidebar, home feed shelves, search results, and filter chips.",
+  "matches": [
+    "^https://www\\.youtube\\.com/.*"
+  ],
+  "version": "1.0.0"
+}

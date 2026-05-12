@@ -51,7 +51,8 @@ export default defineManifest({
     },
   ],
   content_security_policy: {
-    extension_pages: "script-src 'self'; connect-src https://api.anthropic.com;",
+    extension_pages:
+      "script-src 'self'; connect-src https://api.anthropic.com https://api.github.com https://raw.githubusercontent.com;",
   },
   homepage_url: "https://github.com/stephanecollot/VibeBob",
   minimum_chrome_version: "116",

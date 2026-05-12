@@ -1,0 +1,5 @@
+.container-xl, .container-lg {
+  max-width: 100% !important;
+  padding-left: 32px !important;
+  padding-right: 32px !important;
+}
