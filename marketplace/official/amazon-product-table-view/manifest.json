@@ -1,0 +1,12 @@
+{
+  "name": "Amazon Product Table View",
+  "description": "Adds a 'Table View' button on Amazon search results pages that displays all products in a clean, sortable table with image, title, price, and rating.",
+  "matches": [
+    "^https://www\\.amazon\\.(co\\.uk|com|de|fr|es|it|ca|com\\.au)/s\\?"
+  ],
+  "version": "1.0.0",
+  "created_at": "2025-01-30T00:00:00Z",
+  "updated_at": "2025-01-30T00:00:00Z",
+  "entry": "mod.js",
+  "styles": "mod.css"
+}

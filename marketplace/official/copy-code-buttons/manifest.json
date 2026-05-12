@@ -1,8 +1,0 @@
-{
-  "name": "Copy Code Buttons",
-  "description": "Adds a copy-to-clipboard button to every <pre> code block on any page.",
-  "matches": [".*"],
-  "entry": "mod.js",
-  "version": "0.1.0",
-  "author": "vibebob"
-}

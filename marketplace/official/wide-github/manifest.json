@@ -1,9 +1,0 @@
-{
-  "name": "Wide GitHub",
-  "description": "Makes GitHub repository pages use the full browser width.",
-  "matches": ["^https://github\\.com/.*"],
-  "entry": "mod.js",
-  "styles": "mod.css",
-  "version": "0.1.0",
-  "author": "vibebob"
-}
