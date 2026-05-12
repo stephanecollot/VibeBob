@@ -1,9 +1,8 @@
 import { writeFile, deleteFile, mkFeatureDir, listFiles, readFile, deleteFeature } from "./index";
 import { commitAll, initRepo } from "../git";
 import { removeFeatureScreenshotPreference } from "../runtime/featureStore";
-import type { FeatureId, Manifest, MarketplaceMod } from "../types";
+import type { FeatureId } from "../types";
 import type { AppMessage } from "../types/messages";
-import { fetchModFiles, getMarketplacePath } from "../marketplace/github";
 
 async function packFeature(id: FeatureId): Promise<{
   exists: boolean;
@@ -75,66 +74,3 @@ export async function deleteFeatureFully(id: FeatureId): Promise<void> {
   await notifyFeatureChanged(id);
 }
 
-export async function installFromMarketplace(
-  mod: MarketplaceMod,
-): Promise<FeatureId> {
-  const id = crypto.randomUUID();
-  const { modJs, modCss, manifestJson } = await fetchModFiles(mod);
-
-  const now = new Date().toISOString();
-  const remoteManifest = JSON.parse(manifestJson);
-  const manifest: Manifest = {
-    id,
-    name: remoteManifest.name ?? mod.slug,
-    description: remoteManifest.description ?? "",
-    matches: remoteManifest.matches ?? [],
-    entry: "mod.js",
-    styles: modCss ? "mod.css" : undefined,
-    version: remoteManifest.version ?? "0.0.1",
-    author: remoteManifest.author,
-    createdAt: now,
-    updatedAt: now,
-    source: {
-      github: "stephanecollot/VibeBob",
-      path: getMarketplacePath(mod),
-    },
-  };
-
-  await mkFeatureDir(id);
-  await initRepo(id);
-  await writeFile(id, "manifest.json", JSON.stringify(manifest, null, 2));
-  await writeFile(id, "mod.js", modJs);
-  if (modCss) await writeFile(id, "mod.css", modCss);
-  await commitAll(id, `install from marketplace: ${mod.namespace}/${mod.slug}`);
-  await notifyFeatureChanged(id);
-  return id;
-}
-
-export async function exportForPublish(
-  featureId: FeatureId,
-): Promise<Record<string, string>> {
-  const files: Record<string, string> = {};
-  const fileList = await listFiles(featureId);
-  for (const f of fileList) {
-    if (f === "session.jsonl") continue;
-    files[f] = await readFile(featureId, f);
-  }
-
-  if (files["manifest.json"]) {
-    const manifest = JSON.parse(files["manifest.json"]);
-    delete manifest.id;
-    delete manifest.createdAt;
-    delete manifest.updatedAt;
-    delete manifest.source;
-    files["manifest.json"] = JSON.stringify(manifest, null, 2);
-  }
-
-  if (!files["README.md"]) {
-    const manifest = files["manifest.json"]
-      ? JSON.parse(files["manifest.json"])
-      : {};
-    files["README.md"] = `# ${manifest.name ?? "Untitled Mod"}\n\n${manifest.description ?? ""}\n`;
-  }
-
-  return files;
-}

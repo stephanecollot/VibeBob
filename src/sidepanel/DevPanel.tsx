@@ -252,6 +252,8 @@ export function DevPanel({
         delete manifest.createdAt;
         delete manifest.updatedAt;
         delete manifest.source;
+        manifest.entry = "mod.js";
+        if (files["mod.css"]) manifest.styles = "mod.css";
         files["manifest.json"] = JSON.stringify(manifest, null, 2);
       }
 

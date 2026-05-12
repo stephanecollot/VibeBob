@@ -5,13 +5,60 @@ import {
   ArrowPathIcon,
   MagnifyingGlassIcon,
 } from "@heroicons/react/20/solid";
-import { fetchCatalog } from "../marketplace/github";
-import { installFromMarketplace } from "../vfs/feature";
-import * as vfs from "../vfs";
+import { fetchCatalog, fetchModFiles, getMarketplacePath } from "../marketplace/github";
+import { createFeature, writeFileAndCommit } from "../vfs/feature";
 import type { FeatureId, MarketplaceMod, Manifest } from "../types";
+import type { FeatureCache } from "../runtime/featureStore";
 
 interface Props {
   onInstalled: (id: FeatureId) => void;
+}
+
+async function installMod(mod: MarketplaceMod): Promise<FeatureId> {
+  const id = crypto.randomUUID();
+  const { modJs, modCss, manifestJson } = await fetchModFiles(mod);
+
+  const now = new Date().toISOString();
+  const remote = JSON.parse(manifestJson);
+  const manifest: Manifest = {
+    id,
+    name: remote.name ?? mod.slug,
+    description: remote.description ?? "",
+    matches: remote.matches ?? [],
+    entry: "mod.js",
+    styles: modCss ? "mod.css" : undefined,
+    version: remote.version ?? "0.0.1",
+    author: remote.author,
+    createdAt: now,
+    updatedAt: now,
+    source: { github: "stephanecollot/VibeBob", path: getMarketplacePath(mod) },
+  };
+
+  await createFeature(id);
+  await writeFileAndCommit(id, "manifest.json", JSON.stringify(manifest, null, 2), "init manifest");
+  await writeFileAndCommit(id, "mod.js", modJs, "init mod.js");
+  if (modCss) await writeFileAndCommit(id, "mod.css", modCss, "init mod.css");
+  return id;
+}
+
+async function loadInstalledPaths(): Promise<Set<string>> {
+  const paths = new Set<string>();
+  try {
+    const data = await chrome.storage.local.get("features");
+    const features = (data.features ?? {}) as Record<string, FeatureCache>;
+    for (const fc of Object.values(features)) {
+      try {
+        const stored = await chrome.storage.local.get(`manifest_source_${fc.id}`);
+        const source = stored[`manifest_source_${fc.id}`] as string | undefined;
+        if (source) paths.add(source);
+      } catch {
+        // skip
+      }
+    }
+  } catch {
+    // skip
+  }
+  return paths;
 }
 
 export function Marketplace({ onInstalled }: Props) {
@@ -22,25 +69,6 @@ export function Marketplace({ onInstalled }: Props) {
   const [nsFilter, setNsFilter] = useState<string | null>(null);
   const [installedPaths, setInstalledPaths] = useState<Set<string>>(new Set());
   const [installing, setInstalling] = useState<string | null>(null);
-
-  async function loadInstalledPaths(): Promise<Set<string>> {
-    const paths = new Set<string>();
-    try {
-      const featureIds = await vfs.listFeatures();
-      for (const fid of featureIds) {
-        try {
-          const raw = await vfs.readFile(fid, "manifest.json");
-          const manifest = JSON.parse(raw) as Manifest;
-          if (manifest.source?.path) paths.add(manifest.source.path);
-        } catch {
-          // skip
-        }
-      }
-    } catch {
-      // skip
-    }
-    return paths;
-  }
 
   async function load(force = false) {
     setLoading(true);
@@ -87,7 +115,8 @@ export function Marketplace({ onInstalled }: Props) {
     const key = `marketplace/${mod.namespace}/${mod.slug}`;
     setInstalling(key);
     try {
-      const id = await installFromMarketplace(mod);
+      const id = await installMod(mod);
+      await chrome.storage.local.set({ [`manifest_source_${id}`]: key });
       setInstalledPaths((prev) => new Set([...prev, key]));
       onInstalled(id);
     } catch (e) {
