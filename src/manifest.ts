@@ -42,6 +42,7 @@ export default defineManifest({
     "offscreen",
     "tabs",
     "webNavigation",
+    "alarms",
   ],
   host_permissions: ["<all_urls>"],
   web_accessible_resources: [
@@ -52,7 +53,7 @@ export default defineManifest({
   ],
   content_security_policy: {
     extension_pages:
-      "script-src 'self'; connect-src https://api.anthropic.com https://api.github.com https://raw.githubusercontent.com;",
+      "script-src 'self'; connect-src https://api.anthropic.com https://raw.githubusercontent.com;",
   },
   homepage_url: "https://github.com/stephanecollot/VibeBob",
   minimum_chrome_version: "116",

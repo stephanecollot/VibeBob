@@ -2,6 +2,7 @@ import { ensureOffscreen } from "./offscreenManager";
 import { applyBootstrap, unapplyBootstrap } from "./bootstraps";
 import { evaluateJsMain } from "./evaluateJsMain";
 import { attachRouter } from "./router";
+import { attachMarketplaceGuard, refreshAndEnforce } from "./marketplaceGuard";
 import { applySyncMessage } from "../runtime/featureStore";
 import { TAB_NOT_VISIBLE, type AppMessage } from "../types/messages";
 
@@ -9,9 +10,27 @@ chrome.runtime.onInstalled.addListener(() => {
   chrome.sidePanel
     .setPanelBehavior({ openPanelOnActionClick: true })
     .catch((err) => console.error("[vibebob] sidePanel.setPanelBehavior", err));
+  void sweepLegacyInstallKeys();
+  void refreshAndEnforce(true);
 });
 
+/**
+ * Marketplace provenance now lives in each feature's manifest.source. Drop the
+ * per-install `manifest_source_<id>` keys the old flow left behind; they were
+ * never cleaned up on delete.
+ */
+async function sweepLegacyInstallKeys(): Promise<void> {
+  try {
+    const all = await chrome.storage.local.get(null);
+    const stale = Object.keys(all).filter((k) => k.startsWith("manifest_source_"));
+    if (stale.length) await chrome.storage.local.remove(stale);
+  } catch (err) {
+    console.warn("[vibebob] could not sweep legacy install keys", err);
+  }
+}
+
 attachRouter();
+attachMarketplaceGuard();
 
 async function activeTab(): Promise<chrome.tabs.Tab> {
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
@@ -213,6 +232,13 @@ chrome.runtime.onMessage.addListener((msg: AppMessage, _sender, sendResponse) =>
         console.warn("[vibebob/bg] browser tool failed", msg.tool, message);
         sendResponse({ ok: false, error: message });
       });
+    return true;
+  }
+
+  if (msg.target === "background" && msg.type === "marketplace.enforce") {
+    refreshAndEnforce(msg.force ?? true)
+      .then((result) => sendResponse({ ok: true, result }))
+      .catch((err) => sendResponse({ ok: false, error: String(err) }));
     return true;
   }
 

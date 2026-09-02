@@ -1,0 +1,123 @@
+name: Takedown
+
+# Removing a mod from the catalog and force-disabling it on machines that
+# already installed it. Apply the `takedown` label to the mod's submission
+# issue, or run this by hand for mods that have no issue.
+on:
+  issues:
+    types: [labeled, unlabeled]
+  workflow_dispatch:
+    inputs:
+      mod_id:
+        description: 'Mod to act on, as namespace/slug'
+        required: true
+      mode:
+        description: 'block removes it, unblock restores it'
+        type: choice
+        options: [block, unblock]
+        default: block
+      severity:
+        description: 'critical force-disables installed copies; warn only shows a banner'
+        type: choice
+        options: [critical, warn]
+        default: critical
+      reason:
+        description: 'Shown to anyone who has it installed'
+        required: false
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: marketplace-publish
+  cancel-in-progress: false
+
+jobs:
+  takedown:
+    # Only users with triage or write permission can apply a label, so GitHub has
+    # already done the authorisation. Checking the sender's login on top of that
+    # only creates a way for a legitimate takedown to no-op in silence.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.label.name == 'takedown' 
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # For the label path the mod id comes from the canonical issue title the
+      # publish job set: "[mod] namespace/slug".
+      - name: Resolve target
+        id: target
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          INPUT_MOD_ID: ${{ inputs.mod_id }}
+          INPUT_MODE: ${{ inputs.mode }}
+          INPUT_SEVERITY: ${{ inputs.severity }}
+          INPUT_REASON: ${{ inputs.reason }}
+          ACTION: ${{ github.event.action }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "mod_id=$INPUT_MOD_ID" >> "$GITHUB_OUTPUT"
+            echo "mode=$INPUT_MODE" >> "$GITHUB_OUTPUT"
+            echo "severity=$INPUT_SEVERITY" >> "$GITHUB_OUTPUT"
+            echo "reason=$INPUT_REASON" >> "$GITHUB_OUTPUT"
+          else
+            MOD_ID="$(printf '%s' "$ISSUE_TITLE" | sed -n 's/^\[mod\] \([a-z0-9-]*\/[a-z0-9-]*\).*$/\1/p')"
+            echo "mod_id=$MOD_ID" >> "$GITHUB_OUTPUT"
+            if [ "$ACTION" = "labeled" ]; then echo "mode=block" >> "$GITHUB_OUTPUT";
+            else echo "mode=unblock" >> "$GITHUB_OUTPUT"; fi
+            echo "severity=critical" >> "$GITHUB_OUTPUT"
+            echo "reason=Removed by the maintainer." >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Fail clearly when the title carries no mod id
+        if: steps.target.outputs.mod_id == ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          gh issue comment "$ISSUE_NUMBER" --body \
+            "Could not work out which mod this is. The title must read \`[mod] namespace/slug\`, or run the Takedown workflow by hand."
+          exit 1
+
+      - name: Update blocklist
+        env:
+          MOD_ID: ${{ steps.target.outputs.mod_id }}
+          MODE: ${{ steps.target.outputs.mode }}
+          SEVERITY: ${{ steps.target.outputs.severity }}
+          REASON: ${{ steps.target.outputs.reason }}
+        run: node .github/scripts/takedown.mjs
+
+      - name: Commit and push
+        env:
+          MOD_ID: ${{ steps.target.outputs.mod_id }}
+          MODE: ${{ steps.target.outputs.mode }}
+        run: |
+          git config user.name "vibebob-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          node .github/scripts/build-catalog.mjs
+          git add marketplace
+          git diff --cached --quiet && echo "nothing changed" && exit 0
+          git commit -m "marketplace: ${MODE} ${MOD_ID}"
+          git push || (git pull --rebase origin main && git push)
+
+      - name: Confirm on the issue
+        if: github.event_name == 'issues'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          MOD_ID: ${{ steps.target.outputs.mod_id }}
+          MODE: ${{ steps.target.outputs.mode }}
+        run: |
+          if [ "$MODE" = "block" ]; then
+            gh issue comment "$ISSUE_NUMBER" --body \
+              "\`$MOD_ID\` has been taken down. It is out of the catalog, and installed copies disable themselves within 6 hours (or immediately when someone opens the Marketplace tab). Remove the \`takedown\` label to restore it."
+          else
+            gh issue comment "$ISSUE_NUMBER" --body \
+              "\`$MOD_ID\` has been restored to the catalog. People who had it installed keep it disabled until they re-enable it themselves."
+          fi

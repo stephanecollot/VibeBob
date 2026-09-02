@@ -30,6 +30,9 @@ async function evaluateTab(tabId: number, url: string): Promise<void> {
   const features = await listFeatureCaches();
   const matching = new Map<FeatureId, FeatureCache>();
   for (const f of features) {
+    // Belt and braces: a mod pulled from the marketplace never runs, whatever
+    // its enabled flag says, unless the user explicitly kept it.
+    if (f.blocked?.severity === "critical" && !f.blocked.acknowledged) continue;
     if (f.enabled && f.modJs && urlMatches(url, f.matches)) matching.set(f.id, f);
   }
 
