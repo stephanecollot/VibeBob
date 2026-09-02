@@ -10,13 +10,26 @@ VibeBob is a Chrome extension that lets you describe UX improvements in plain En
 
 ## Install
 
-> The extension is not yet on the Chrome Web Store. Install manually:
+### From the Chrome Web Store (recommended)
+
+**[Add VibeBob to Chrome](https://chromewebstore.google.com/detail/vibebob/fjocaodnmgpnhadpfniepeodhdejjioh)** — one click, and Chrome keeps it up to date automatically.
+
+Then click the VibeBob icon in your toolbar and paste your [Anthropic API key](https://console.anthropic.com/) in Settings. The key is stored locally in your browser and is sent only to Anthropic — see [PRIVACY.md](PRIVACY.md).
+
+<details>
+<summary>Or install manually from a release zip</summary>
+
+Useful for trying a build before it reaches the store, or for running a modified copy.
 
 1. Download the [latest release zip](https://github.com/stephanecollot/VibeBob/releases) and unzip it
 2. Open `chrome://extensions` in Chrome
 3. Enable **Developer mode** (top right toggle)
 4. Click **Load unpacked** and select the unzipped folder
 5. Click the VibeBob icon in your toolbar, then paste your [Anthropic API key](https://console.anthropic.com/) in Settings
+
+Manually installed copies do not auto-update — repeat these steps for each new release.
+
+</details>
 
 ## How it works
 
@@ -43,7 +56,7 @@ pnpm install
 pnpm dev
 ```
 
-Then load the `dist` folder as an unpacked extension (see [Install](#install) above). Vite will hot-reload on changes.
+Then load the `dist` folder as an unpacked extension (`chrome://extensions` → Developer mode → **Load unpacked**). Vite will hot-reload on changes.
 
 ### Package for Chrome Web Store
 
