@@ -352,6 +352,14 @@ export function DevPanel({
         </div>
       )}
 
+      {!vfsMissing && (
+        <PublishMod
+          featureId={featureId}
+          exporting={exporting}
+          onExportZip={() => void onExport()}
+        />
+      )}
+
       <section>
         <h2 className="mb-2 text-[12px] font-semibold uppercase tracking-wider text-gray-500">
           URL matches
@@ -480,11 +488,6 @@ export function DevPanel({
             </ul>
           </section>
 
-          <PublishMod
-            featureId={featureId}
-            exporting={exporting}
-            onExportZip={() => void onExport()}
-          />
         </>
       )}
     </div>
