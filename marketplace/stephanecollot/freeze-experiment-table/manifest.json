@@ -1,0 +1,12 @@
+{
+  "name": "Freeze Experiment Table",
+  "description": "Adds a button to freeze the experiment comparison table at the top of the page while scrolling, so you can see experiment details when hovering over charts lower on the page.",
+  "matches": [
+    "^https://www\\.comet\\.com/.*"
+  ],
+  "version": "1.0.0",
+  "entry": "mod.js",
+  "styles": "mod.css",
+  "author": "stephanecollot",
+  "issue": 2
+}
