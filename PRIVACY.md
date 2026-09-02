@@ -30,8 +30,9 @@ Browsing the marketplace downloads a catalog file and mod source from
 `raw.githubusercontent.com`. These are plain file downloads that carry no
 identifier of you or your browsing — GitHub sees them the same way it sees anyone
 fetching a public file, and VibeBob sends nothing about you along with them. The
-extension also refetches the catalog roughly every 6 hours in the background, so
-mods removed for being unsafe can be switched off on your machine.
+extension also rechecks the catalog when you open VibeBob and when Chrome starts,
+so mods removed for being unsafe can be switched off on your machine. It does not
+run a background timer.
 
 Mods you install from the marketplace are code written by other people. They run
 with the same access to the pages they match as the sites themselves, including

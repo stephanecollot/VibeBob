@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowLeftIcon,
   Cog6ToothIcon,
@@ -24,6 +24,15 @@ export function App() {
   const [wsTab, setWsTab] = useState<WorkspaceTab>("chat");
   const [active, setActive] = useState<FeatureId | null>(null);
   const [agentBusy, setAgentBusy] = useState(false);
+
+  // Opening VibeBob is the moment to find out a mod was pulled from the
+  // marketplace. force:false, so the catalog's 30-minute cache absorbs repeated
+  // opens without a network request each time.
+  useEffect(() => {
+    chrome.runtime
+      .sendMessage({ target: "background", type: "marketplace.enforce", force: false })
+      .catch(() => {});
+  }, []);
 
   function goSettings() {
     setPrevView(view);

@@ -116,7 +116,7 @@ jobs:
         run: |
           if [ "$MODE" = "block" ]; then
             gh issue comment "$ISSUE_NUMBER" --body \
-              "\`$MOD_ID\` has been taken down. It is out of the catalog, and installed copies disable themselves within 6 hours (or immediately when someone opens the Marketplace tab). Remove the \`takedown\` label to restore it."
+              "\`$MOD_ID\` has been taken down. It is out of the catalog, and installed copies disable themselves the next time that person opens VibeBob or restarts Chrome. Remove the \`takedown\` label to restore it."
           else
             gh issue comment "$ISSUE_NUMBER" --body \
               "\`$MOD_ID\` has been restored to the catalog. People who had it installed keep it disabled until they re-enable it themselves."
