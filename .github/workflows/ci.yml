@@ -17,7 +17,9 @@ jobs:
           fetch-depth: 0
       - uses: pnpm/action-setup@v4
         with:
-          version: 9
+          # Must match the local toolchain: pnpm-workspace.yaml uses `allowBuilds`
+          # and has no `packages` field, which pnpm 9 rejects outright.
+          version: 11
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
