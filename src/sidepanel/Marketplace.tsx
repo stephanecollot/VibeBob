@@ -59,7 +59,11 @@ export function Marketplace({ onInstalled }: Props) {
       setInstalledIds(installed);
       setStaleSince(result.stale && result.fetchedAt ? result.fetchedAt : null);
       // An empty catalog with no cache to fall back on is a real error, not an empty market.
-      if (result.stale && !result.fetchedAt) setError(result.error ?? "could not reach the marketplace");
+      if (result.stale && !result.fetchedAt)
+        setError(
+          `Could not reach the marketplace (${result.error ?? "unknown error"}). ` +
+            `Check your connection and try refreshing.`,
+        );
       // A refresh is also the cheapest moment to act on new takedowns.
       chrome.runtime
         .sendMessage({ target: "background", type: "marketplace.enforce", force })
@@ -178,7 +182,7 @@ export function Marketplace({ onInstalled }: Props) {
         <div className="py-8 text-center text-sm text-gray-400">Loading marketplace...</div>
       )}
 
-      {!loading && filtered.length === 0 && (
+      {!loading && !error && filtered.length === 0 && (
         <div className="py-8 text-center text-sm text-gray-400">
           {mods.length === 0 ? "No mods available yet." : "No mods match your search."}
         </div>
