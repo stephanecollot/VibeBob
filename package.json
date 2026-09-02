@@ -9,12 +9,12 @@
   "bugs": {
     "url": "https://github.com/stephanecollot/VibeBob/issues"
   },
-  "version": "1.0.1",
+  "version": "1.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "package": "pnpm build && cd dist && zip -r ../vibebob.zip . -x '*.map'",
+    "package": "pnpm build && rm -f vibebob.zip && cd dist && zip -r ../vibebob.zip . -x '*.map'",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit"
   },
