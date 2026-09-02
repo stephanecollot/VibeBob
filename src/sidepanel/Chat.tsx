@@ -3,20 +3,24 @@ import {
   ArrowPathIcon,
   ArrowUturnLeftIcon,
   CheckIcon,
+  ClipboardDocumentIcon,
+  ExclamationTriangleIcon,
   PaperAirplaneIcon,
   PlayIcon,
   StopIcon,
   XMarkIcon,
 } from "@heroicons/react/20/solid";
-import type { AppMessage, AgentEvent } from "../types/messages";
+import { TAB_NOT_VISIBLE, type AppMessage, type AgentEvent } from "../types/messages";
+import { TabBar, TabHint, readActiveTab, type TabInfo } from "./TabBar";
 import type { FeatureId, ChatTurn } from "../types";
 import {
   getFeatureScreenshotEnabled,
   setFeatureScreenshotEnabled,
 } from "../runtime/featureStore";
 import { sendToOffscreen } from "./sendToOffscreen";
+import { buildTrace, copyText } from "./trace";
 
-interface DisplayMessage {
+export interface DisplayMessage {
   id: string;
   role: "user" | "assistant" | "tool";
   text: string;
@@ -25,6 +29,8 @@ interface DisplayMessage {
   toolInput?: unknown;
   toolOutput?: unknown;
   toolError?: boolean;
+  /** Recoverable outcome shown as a note rather than a failure. */
+  toolNote?: string;
   commit?: string;
 }
 
@@ -48,8 +54,15 @@ export function Chat({ featureId, onBusyChange }: Props) {
     });
   }
   const [err, setErr] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [maxStepsPrompt, setMaxStepsPrompt] = useState<number | null>(null);
   const [screenshotEnabled, setScreenshotEnabled] = useState(true);
+  const [traceCopied, setTraceCopied] = useState(false);
+  const [liveTab, setLiveTab] = useState<TabInfo | null>(null);
+  const [pinnedTab, setPinnedTab] = useState<TabInfo | null>(null);
+  const [needsVisible, setNeedsVisible] = useState(false);
+  const pinnedTabRef = useRef<TabInfo | null>(null);
+  pinnedTabRef.current = pinnedTab;
   const scrollRef = useRef<HTMLDivElement>(null);
   const assistantBufferRef = useRef<string>("");
 
@@ -76,9 +89,35 @@ export function Chat({ featureId, onBusyChange }: Props) {
   }, [featureId]);
 
   useEffect(() => {
+    let cancelled = false;
+    const refresh = () => {
+      readActiveTab().then((t) => {
+        if (cancelled) return;
+        setLiveTab(t);
+        setNeedsVisible((need) => (need && t && t.id === pinnedTabRef.current?.id ? false : need));
+      });
+    };
+    refresh();
+    const onUpdated = (_id: number, info: chrome.tabs.TabChangeInfo) => {
+      if (info.status === "complete" || info.title || info.url) refresh();
+    };
+    chrome.tabs.onActivated.addListener(refresh);
+    chrome.tabs.onUpdated.addListener(onUpdated);
+    return () => {
+      cancelled = true;
+      chrome.tabs.onActivated.removeListener(refresh);
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+    };
+  }, []);
+
+  useEffect(() => {
     setMessages([]);
     setErr(null);
+    setNotice(null);
     setMaxStepsPrompt(null);
+    setTraceCopied(false);
+    setPinnedTab(null);
+    setNeedsVisible(false);
     assistantBufferRef.current = "";
 
     sendToOffscreen({
@@ -140,6 +179,9 @@ export function Chat({ featureId, onBusyChange }: Props) {
         },
       ]);
     } else if (event.kind === "tool-result") {
+      const failed = event.isError === true;
+      const kind = failed ? classifyToolError(event.output) : { isError: false };
+      if (failed && String(event.output).includes(TAB_NOT_VISIBLE)) setNeedsVisible(true);
       setMessages((m) =>
         m.map((d) =>
           d.id === event.id
@@ -147,7 +189,8 @@ export function Chat({ featureId, onBusyChange }: Props) {
                 ...d,
                 pending: false,
                 toolOutput: event.output,
-                toolError: event.isError,
+                toolError: kind.isError,
+                toolNote: kind.note,
               }
             : d,
         ),
@@ -174,6 +217,13 @@ export function Chat({ featureId, onBusyChange }: Props) {
         });
         return next.reverse();
       });
+    } else if (event.kind === "cancelled") {
+      setBusy(false);
+      setMaxStepsPrompt(null);
+      setNotice(event.message);
+      setMessages((m) =>
+        m.map((d) => (d.pending ? { ...d, pending: false } : d)),
+      );
     } else if (event.kind === "error") {
       setBusy(false);
       setMaxStepsPrompt(null);
@@ -189,7 +239,9 @@ export function Chat({ featureId, onBusyChange }: Props) {
     if (!text || busy) return;
     setInput("");
     setErr(null);
+    setNotice(null);
     setMaxStepsPrompt(null);
+    setNeedsVisible(false);
     setBusy(true);
     setMessages((m) => [
       ...m,
@@ -201,6 +253,8 @@ export function Chat({ featureId, onBusyChange }: Props) {
       setErr("No API key set — open Settings and save your Anthropic API key.");
       return;
     }
+    const pin = await readActiveTab();
+    setPinnedTab(pin);
     sendToOffscreen({
       type: "agent.startTurn",
       target: "offscreen",
@@ -209,6 +263,7 @@ export function Chat({ featureId, onBusyChange }: Props) {
       apiKey,
       model: typeof model === "string" ? model : undefined,
       screenshotEnabled,
+      tabId: pin?.id,
     } satisfies AppMessage);
   }
 
@@ -225,6 +280,8 @@ export function Chat({ featureId, onBusyChange }: Props) {
     if (busy || maxStepsPrompt === null) return;
     setMaxStepsPrompt(null);
     setErr(null);
+    setNotice(null);
+    setNeedsVisible(false);
     setBusy(true);
     const { apiKey, model } = await chrome.storage.local.get(["apiKey", "model"]);
     if (typeof apiKey !== "string" || apiKey.length === 0) {
@@ -239,7 +296,18 @@ export function Chat({ featureId, onBusyChange }: Props) {
       apiKey,
       model: typeof model === "string" ? model : undefined,
       screenshotEnabled,
+      tabId: pinnedTab?.id ?? (await readActiveTab())?.id,
     } satisfies AppMessage);
+  }
+
+  async function onCopyTrace() {
+    try {
+      await copyText(await buildTrace(featureId, messages, err, pinnedTab));
+      setTraceCopied(true);
+      setTimeout(() => setTraceCopied(false), 1500);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
   }
 
   async function onRevert(oid: string) {
@@ -284,13 +352,28 @@ export function Chat({ featureId, onBusyChange }: Props) {
             </button>
           </div>
         )}
+        {notice && (
+          <div className="rounded-md bg-gray-50 px-3 py-2 text-[13px] text-gray-500">
+            {notice}
+          </div>
+        )}
         {err && (
           <div className="rounded-md bg-red-50 px-3 py-2 text-red-600">
             {err}
           </div>
         )}
       </div>
-      <div className="mt-3 flex items-center gap-2 text-[13px] text-gray-500">
+      <TabBar
+        tab={busy && pinnedTab ? pinnedTab : liveTab}
+        pinned={busy ? pinnedTab : null}
+        liveTab={liveTab}
+        needsVisible={needsVisible}
+      />
+      <TabHint
+        awayFromPin={busy && pinnedTab !== null && liveTab !== null && pinnedTab.id !== liveTab.id}
+        needsVisible={needsVisible}
+      />
+      <div className="mt-1.5 flex items-center gap-2 text-[13px] text-gray-500">
         <input
           type="checkbox"
           id="screenshot-toggle"
@@ -310,6 +393,20 @@ export function Chat({ featureId, onBusyChange }: Props) {
         >
           Allow screenshot
         </label>
+        <button
+          type="button"
+          onClick={() => void onCopyTrace()}
+          disabled={messages.length === 0}
+          title="Copy the full trace (turns, tool inputs and outputs) for debugging"
+          className="ml-auto inline-flex items-center gap-1 rounded px-1.5 py-0.5 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:opacity-40 disabled:hover:bg-transparent"
+        >
+          {traceCopied ? (
+            <CheckIcon className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />
+          ) : (
+            <ClipboardDocumentIcon className="h-3.5 w-3.5" aria-hidden="true" />
+          )}
+          {traceCopied ? "copied" : "copy trace"}
+        </button>
       </div>
       <div className="mt-1.5 flex gap-2">
         <textarea
@@ -348,7 +445,7 @@ export function Chat({ featureId, onBusyChange }: Props) {
   );
 }
 
-function MessageView({
+export function MessageView({
   m,
   onRevert,
 }: {
@@ -382,16 +479,26 @@ function MessageView({
       </div>
     );
   }
-  const StatusIcon = m.pending ? ArrowPathIcon : m.toolError ? XMarkIcon : CheckIcon;
+  const StatusIcon = m.pending
+    ? ArrowPathIcon
+    : m.toolError
+      ? XMarkIcon
+      : m.toolNote
+        ? ExclamationTriangleIcon
+        : CheckIcon;
   return (
     <div
       className={`rounded-md border px-2.5 py-1.5 font-mono text-[13px] ${
-        m.toolError ? "border-red-200 bg-red-50" : "border-gray-200 bg-gray-50"
+        m.toolError
+          ? "border-red-200 bg-red-50"
+          : m.toolNote
+            ? "border-amber-200 bg-amber-50"
+            : "border-gray-200 bg-gray-50"
       }`}
     >
       <div
         className={`flex items-center gap-1.5 ${
-          m.toolError ? "text-red-600" : "text-gray-600"
+          m.toolError ? "text-red-600" : m.toolNote ? "text-amber-700" : "text-gray-600"
         }`}
       >
         <StatusIcon
@@ -399,6 +506,7 @@ function MessageView({
           aria-hidden="true"
         />
         <span className="truncate">{m.toolName}</span>
+        {m.toolNote && <span className="truncate font-sans text-[12px]">{m.toolNote}</span>}
       </div>
       <details className="mt-1.5">
         <summary className="cursor-pointer text-gray-400 hover:text-gray-600">
@@ -441,6 +549,17 @@ function ThinkingIndicator({ messages }: { messages: DisplayMessage[] }) {
       <span className="text-sm text-gray-400">working</span>
     </div>
   );
+}
+
+/**
+ * Some tool failures are transient facts about the browser, not broken code. They read
+ * as a note in the transcript so real failures keep their weight.
+ */
+export function classifyToolError(output: unknown): { isError: boolean; note?: string } {
+  if (String(output).includes(TAB_NOT_VISIBLE)) {
+    return { isError: false, note: "skipped — the page was not in front" };
+  }
+  return { isError: true };
 }
 
 function turnsToDisplay(turns: ChatTurn[]): DisplayMessage[] {
@@ -486,11 +605,14 @@ function turnsToDisplay(turns: ChatTurn[]): DisplayMessage[] {
         if (r.type === "tool_result" && useId) {
           const idx = out.findIndex((d) => d.id === useId);
           if (idx >= 0) {
+            const kind =
+              r.is_error === true ? classifyToolError(r.content) : { isError: false };
             out[idx] = {
               ...out[idx],
               pending: false,
               toolOutput: r.content,
-              toolError: r.is_error === true,
+              toolError: kind.isError,
+              toolNote: kind.note,
             };
           }
         }

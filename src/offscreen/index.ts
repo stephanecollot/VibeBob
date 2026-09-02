@@ -1,5 +1,5 @@
 import "../polyfills";
-import { APIError } from "@anthropic-ai/sdk";
+import { APIError, APIUserAbortError } from "@anthropic-ai/sdk";
 import { runContinueTurn, runTurn } from "../agent/loop";
 import { loadSessionWithCommits } from "../agent/session";
 import { registerBrowserTools } from "../agent/browserTools";
@@ -9,6 +9,7 @@ import { branchWip, checkout, currentOid } from "../git";
 import { deleteFileAndCommit } from "../vfs/feature";
 import * as vfs from "../vfs";
 import type { AppMessage, AgentEvent } from "../types/messages";
+import { RunRegistry, type Run } from "./runs";
 import type { FeatureId } from "../types";
 
 registerBrowserTools();
@@ -16,7 +17,21 @@ registerFsTools();
 registerRuntimeTools();
 console.log("[vibebob/offscreen] booted at", new Date().toISOString());
 
-const inflight = new Map<FeatureId, AbortController>();
+const runs = new RunRegistry();
+
+function isAbort(run: Run, err: unknown): boolean {
+  return run.ctrl.signal.aborted || err instanceof APIUserAbortError;
+}
+
+function reportCancelled(featureId: FeatureId, run: Run): void {
+  const message = runs.cancelMessage(run);
+  if (!message) {
+    console.log("[vibebob/offscreen] run superseded by a newer one", featureId);
+    return;
+  }
+  console.log("[vibebob/offscreen] run cancelled by the user", featureId);
+  send(featureId, { kind: "cancelled", message });
+}
 
 function send(featureId: FeatureId, event: AgentEvent): void {
   const msg: AppMessage = { type: "agent.event", target: "sidepanel", featureId, event };
@@ -40,9 +55,7 @@ chrome.runtime.onMessage.addListener((raw: AppMessage, _sender, sendResponse) =>
   console.log("[vibebob/offscreen] received", raw.type);
 
   if (raw.type === "agent.startTurn") {
-    const ctrl = new AbortController();
-    inflight.get(raw.featureId)?.abort();
-    inflight.set(raw.featureId, ctrl);
+    const run = runs.begin(raw.featureId);
 
     (async () => {
       try {
@@ -59,16 +72,22 @@ chrome.runtime.onMessage.addListener((raw: AppMessage, _sender, sendResponse) =>
           apiKey,
           model: raw.model,
           screenshotEnabled: screenshotEnabledFromMsg ?? true,
+          tabId: raw.tabId,
           emit: (event) => send(raw.featureId, event),
-          signal: ctrl.signal,
+          signal: run.ctrl.signal,
         });
-        console.log("[vibebob/offscreen] turn complete");
+        if (run.ctrl.signal.aborted) reportCancelled(raw.featureId, run);
+        else console.log("[vibebob/offscreen] turn complete");
       } catch (err) {
-        const message = formatAgentError(err);
-        console.error("[vibebob/offscreen] turn failed", message);
-        send(raw.featureId, { kind: "error", message });
+        if (isAbort(run, err)) {
+          reportCancelled(raw.featureId, run);
+        } else {
+          const message = formatAgentError(err);
+          console.error("[vibebob/offscreen] turn failed", message);
+          send(raw.featureId, { kind: "error", message });
+        }
       } finally {
-        inflight.delete(raw.featureId);
+        runs.end(raw.featureId, run);
       }
     })();
     sendResponse({ ok: true });
@@ -76,9 +95,7 @@ chrome.runtime.onMessage.addListener((raw: AppMessage, _sender, sendResponse) =>
   }
 
   if (raw.type === "agent.continueTurn") {
-    const ctrl = new AbortController();
-    inflight.get(raw.featureId)?.abort();
-    inflight.set(raw.featureId, ctrl);
+    const run = runs.begin(raw.featureId);
 
     (async () => {
       try {
@@ -94,16 +111,22 @@ chrome.runtime.onMessage.addListener((raw: AppMessage, _sender, sendResponse) =>
           apiKey,
           model: raw.model,
           screenshotEnabled: screenshotEnabledFromMsg ?? true,
+          tabId: raw.tabId,
           emit: (event) => send(raw.featureId, event),
-          signal: ctrl.signal,
+          signal: run.ctrl.signal,
         });
-        console.log("[vibebob/offscreen] continue complete");
+        if (run.ctrl.signal.aborted) reportCancelled(raw.featureId, run);
+        else console.log("[vibebob/offscreen] continue complete");
       } catch (err) {
-        const message = formatAgentError(err);
-        console.error("[vibebob/offscreen] continue failed", message);
-        send(raw.featureId, { kind: "error", message });
+        if (isAbort(run, err)) {
+          reportCancelled(raw.featureId, run);
+        } else {
+          const message = formatAgentError(err);
+          console.error("[vibebob/offscreen] continue failed", message);
+          send(raw.featureId, { kind: "error", message });
+        }
       } finally {
-        inflight.delete(raw.featureId);
+        runs.end(raw.featureId, run);
       }
     })();
     sendResponse({ ok: true });
@@ -111,7 +134,9 @@ chrome.runtime.onMessage.addListener((raw: AppMessage, _sender, sendResponse) =>
   }
 
   if (raw.type === "agent.cancelTurn") {
-    inflight.get(raw.featureId)?.abort();
+    if (!runs.cancel(raw.featureId)) {
+      console.warn("[vibebob/offscreen] cancel with no run in flight", raw.featureId);
+    }
     sendResponse({ ok: true });
     return false;
   }

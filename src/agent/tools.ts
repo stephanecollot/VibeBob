@@ -38,3 +38,14 @@ export function requireCurrentFeature(): FeatureId {
   if (!currentFeatureId) throw new Error("no current feature in agent context");
   return currentFeatureId;
 }
+
+let currentTabId: number | null = null;
+
+/** The tab a run is pinned to — tools act there even if the user switches tabs. */
+export function setCurrentTab(tabId: number | null): void {
+  currentTabId = tabId;
+}
+
+export function getCurrentTab(): number | undefined {
+  return currentTabId ?? undefined;
+}

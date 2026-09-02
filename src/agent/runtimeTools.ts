@@ -1,5 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import { registerTool, requireCurrentFeature } from "./tools";
+import { registerTool, requireCurrentFeature, getCurrentTab } from "./tools";
 import * as vfs from "../vfs";
 import type { AppMessage } from "../types/messages";
 
@@ -9,6 +9,7 @@ async function callContent(tool: string, input: unknown): Promise<unknown> {
     type: "browser.tool",
     tool,
     input,
+    tabId: getCurrentTab(),
   } satisfies AppMessage);
   if (!reply || reply.ok !== true) {
     throw new Error(reply?.error ?? `${tool} failed`);

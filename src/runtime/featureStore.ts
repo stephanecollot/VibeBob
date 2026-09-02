@@ -10,6 +10,21 @@ export interface FeatureCache {
   broken?: boolean;
 }
 
+/** The predicate the router uses to decide whether a mod belongs on a page. */
+export function urlMatches(url: string, patterns: string[]): boolean {
+  for (const p of patterns) {
+    try {
+      if (new RegExp(p).test(url)) return true;
+    } catch {}
+  }
+  return false;
+}
+
+/** Mods only run on real web pages — not chrome://, about:, or the extension's own pages. */
+export function isModdableUrl(url: string): boolean {
+  return url.startsWith("http://") || url.startsWith("https://");
+}
+
 interface Stored {
   features?: Record<FeatureId, FeatureCache>;
   appliedTabs?: Record<string, FeatureId[]>;

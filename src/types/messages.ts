@@ -1,5 +1,8 @@
 import type { FeatureId, ChatTurn } from "./index";
 
+/** Screenshot failed because the run's tab is not the visible one. */
+export const TAB_NOT_VISIBLE = "ERR_TAB_NOT_VISIBLE";
+
 export type AgentEvent =
   | { kind: "turn-start" }
   | { kind: "text-delta"; text: string }
@@ -8,6 +11,7 @@ export type AgentEvent =
   | { kind: "tool-result"; id: string; output: unknown; isError?: boolean }
   | { kind: "turn-done"; usage?: TokenUsage; assistantCommit?: string }
   | { kind: "max-steps"; steps: number }
+  | { kind: "cancelled"; message: string }
   | { kind: "error"; message: string };
 
 export interface TokenUsage {
@@ -26,6 +30,8 @@ export type AppMessage =
       apiKey: string;
       model?: string;
       screenshotEnabled?: boolean;
+      /** Tab the run is pinned to, so tools don't follow the user to another page. */
+      tabId?: number;
     }
   | {
       type: "agent.continueTurn";
@@ -34,6 +40,8 @@ export type AppMessage =
       apiKey: string;
       model?: string;
       screenshotEnabled?: boolean;
+      /** Tab the run is pinned to, so tools don't follow the user to another page. */
+      tabId?: number;
     }
   | { type: "agent.cancelTurn"; target: "offscreen"; featureId: FeatureId }
   | { type: "agent.loadSession"; target: "offscreen"; featureId: FeatureId }
@@ -55,6 +63,8 @@ export type AppMessage =
       target: "background";
       tool: string;
       input: unknown;
+      /** Tab to act on. Falls back to the active tab when absent. */
+      tabId?: number;
     }
   | {
       type: "content.tool";

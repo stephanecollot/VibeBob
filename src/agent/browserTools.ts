@@ -1,5 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import { registerTool } from "./tools";
+import { registerTool, getCurrentTab } from "./tools";
 import type { AppMessage } from "../types/messages";
 
 async function callBrowser(tool: string, input: unknown): Promise<unknown> {
@@ -8,6 +8,7 @@ async function callBrowser(tool: string, input: unknown): Promise<unknown> {
     type: "browser.tool",
     tool,
     input,
+    tabId: getCurrentTab(),
   } satisfies AppMessage);
   if (!reply || reply.ok !== true) {
     throw new Error(reply?.error ?? `browser tool ${tool} failed`);

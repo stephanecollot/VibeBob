@@ -3,7 +3,7 @@ import { applyBootstrap, unapplyBootstrap } from "./bootstraps";
 import { evaluateJsMain } from "./evaluateJsMain";
 import { attachRouter } from "./router";
 import { applySyncMessage } from "../runtime/featureStore";
-import type { AppMessage } from "../types/messages";
+import { TAB_NOT_VISIBLE, type AppMessage } from "../types/messages";
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.sidePanel
@@ -17,6 +17,18 @@ async function activeTab(): Promise<chrome.tabs.Tab> {
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   if (!tab?.id) throw new Error("no active tab — focus a tab and try again");
   return tab;
+}
+
+/** The tab a run was pinned to, or the active one for calls that carry no tab. */
+async function targetTab(tabId: number | undefined): Promise<chrome.tabs.Tab> {
+  if (tabId == null) return activeTab();
+  try {
+    return await chrome.tabs.get(tabId);
+  } catch {
+    throw new Error(
+      `the tab this run started on is gone (id ${tabId}) — reopen the page and send your message again`,
+    );
+  }
 }
 
 function assertInjectablePage(url: string | undefined): void {
@@ -97,12 +109,47 @@ async function unapplyMod(
   return { ok: true };
 }
 
+const CAPTURE_PAINT_MS = 150;
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * captureVisibleTab can only photograph a window's visible tab. When the user has tabbed
+ * away from a pinned run, briefly bring its tab forward and put theirs back afterwards —
+ * a short flicker beats either failing or silently photographing the wrong page.
+ */
+async function captureTab(tab: chrome.tabs.Tab): Promise<{ dataUrl: string }> {
+  const windowId = tab.windowId!;
+  const capture = () => chrome.tabs.captureVisibleTab(windowId, { format: "png" });
+
+  if (tab.active) return { dataUrl: await capture() };
+
+  const [previous] = await chrome.tabs.query({ active: true, windowId });
+  try {
+    await chrome.tabs.update(tab.id!, { active: true });
+  } catch {
+    throw new Error(
+      `${TAB_NOT_VISIBLE}: cannot screenshot because the page this run started on could not ` +
+        "be brought to the front. Ask the user to switch back to it, or use inspect_dom / get_html.",
+    );
+  }
+  try {
+    await wait(CAPTURE_PAINT_MS);
+    return { dataUrl: await capture() };
+  } finally {
+    if (previous?.id != null && previous.id !== tab.id) {
+      await chrome.tabs.update(previous.id, { active: true }).catch(() => {});
+    }
+  }
+}
+
 async function handleBrowserTool(msg: AppMessage & { type: "browser.tool" }): Promise<unknown> {
-  const tab = await activeTab();
+  const tab = await targetTab(msg.tabId);
   if (msg.tool === "screenshot") {
     if (tab.windowId == null) throw new Error("active tab has no window id");
-    const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
-    return { dataUrl };
+    return captureTab(tab);
   }
   if (msg.tool === "apply_mod") {
     return applyMod(tab, msg.input as { featureId: string; modJs: string; modCss?: string });
@@ -161,7 +208,9 @@ chrome.runtime.onMessage.addListener((msg: AppMessage, _sender, sendResponse) =>
       .then((result) => sendResponse({ ok: true, result }))
       .catch((err) => {
         const message = err instanceof Error ? err.message : String(err);
-        console.error("[vibebob/bg] browser tool failed", msg.tool, err);
+        // Not an extension error: this goes back to the agent as a tool result and it
+        // adapts. console.error would file it in the chrome://extensions error list.
+        console.warn("[vibebob/bg] browser tool failed", msg.tool, message);
         sendResponse({ ok: false, error: message });
       });
     return true;

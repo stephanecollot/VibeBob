@@ -7,12 +7,17 @@ import type {
   BetaToolUseBlock,
 } from "@anthropic-ai/sdk/resources/beta/messages/messages.js";
 import { SYSTEM_PROMPT } from "./systemPrompt";
-import { getToolDefinitions, dispatchTool, setCurrentFeature } from "./tools";
+import {
+  getToolDefinitions,
+  dispatchTool,
+  setCurrentFeature,
+  setCurrentTab,
+} from "./tools";
 import { appendTurn, loadJsonl } from "./session";
+import { DEFAULT_MODEL } from "./models";
 import type { AgentEvent } from "../types/messages";
 import type { FeatureId, ChatTurn } from "../types";
 
-const DEFAULT_MODEL = "claude-sonnet-4-6";
 const MAX_TOKENS = 4096;
 export const MAX_AGENT_STEPS = 50;
 
@@ -30,6 +35,8 @@ export interface RunTurnOpts {
   apiKey: string;
   model?: string;
   screenshotEnabled?: boolean;
+  /** Tab this run acts on. Without it, tools fall back to whatever tab is active. */
+  tabId?: number;
   emit: (event: AgentEvent) => void;
   signal?: AbortSignal;
 }
@@ -42,10 +49,12 @@ export async function runTurn(opts: RunTurnOpts): Promise<void> {
   const client = new Anthropic({ apiKey: opts.apiKey, dangerouslyAllowBrowser: true });
 
   setCurrentFeature(opts.featureId);
+  setCurrentTab(opts.tabId ?? null);
   try {
     await runTurnInner(opts, client);
   } finally {
     setCurrentFeature(null);
+    setCurrentTab(null);
   }
 }
 
@@ -53,10 +62,12 @@ export async function runContinueTurn(opts: RunContinueOpts): Promise<void> {
   const client = new Anthropic({ apiKey: opts.apiKey, dangerouslyAllowBrowser: true });
 
   setCurrentFeature(opts.featureId);
+  setCurrentTab(opts.tabId ?? null);
   try {
     await runContinueInner(opts, client);
   } finally {
     setCurrentFeature(null);
+    setCurrentTab(null);
   }
 }
 
@@ -94,19 +105,14 @@ async function runAgentLoop(opts: LoopOpts, apiMessages: BetaMessageParam[]): Pr
   );
 
   for (let step = 0; step < MAX_AGENT_STEPS; step++) {
-    if (opts.signal?.aborted) {
-      opts.emit({ kind: "error", message: "cancelled" });
-      return;
-    }
+    // The offscreen host reports the cancellation — it knows who aborted the run.
+    if (opts.signal?.aborted) return;
 
     let finalMessage: BetaMessage;
     let compactionPasses = 0;
 
     do {
-      if (opts.signal?.aborted) {
-        opts.emit({ kind: "error", message: "cancelled" });
-        return;
-      }
+      if (opts.signal?.aborted) return;
 
       const stream = client.beta.messages.stream(
         {

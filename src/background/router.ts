@@ -3,19 +3,12 @@ import {
   getApplied,
   setApplied,
   removeAppliedForTab,
+  urlMatches,
+  isModdableUrl,
   type FeatureCache,
 } from "../runtime/featureStore";
 import { applyBootstrap, unapplyBootstrap } from "./bootstraps";
 import type { FeatureId } from "../types";
-
-function urlMatches(url: string, patterns: string[]): boolean {
-  for (const p of patterns) {
-    try {
-      if (new RegExp(p).test(url)) return true;
-    } catch {}
-  }
-  return false;
-}
 
 const evalQueue = new Map<number, Promise<void>>();
 
@@ -32,7 +25,7 @@ function scheduleEvaluate(tabId: number, url: string): void {
 }
 
 async function evaluateTab(tabId: number, url: string): Promise<void> {
-  if (!url || !(url.startsWith("http://") || url.startsWith("https://"))) return;
+  if (!url || !isModdableUrl(url)) return;
 
   const features = await listFeatureCaches();
   const matching = new Map<FeatureId, FeatureCache>();
