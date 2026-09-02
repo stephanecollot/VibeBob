@@ -63,6 +63,38 @@
       "externalHosts": [],
       "official": true,
       "styles": "mod.css"
+    },
+    {
+      "id": "stephanecollot/freeze-experiment-table",
+      "namespace": "stephanecollot",
+      "slug": "freeze-experiment-table",
+      "path": "marketplace/stephanecollot/freeze-experiment-table",
+      "name": "Freeze Experiment Table",
+      "description": "Adds a button to freeze the experiment comparison table at the top of the page while scrolling, so you can see experiment details when hovering over charts lower on the page.",
+      "matches": [
+        "^https://www\\.comet\\.com/.*"
+      ],
+      "entry": "mod.js",
+      "version": "1.0.0",
+      "author": "stephanecollot",
+      "commit": "26c27abf18a6fa33f32c0d3f500e85b4045a36c0",
+      "updatedAt": "2026-09-02T20:02:11Z",
+      "sizeBytes": {
+        "manifest.json": 401,
+        "mod.js": 4022,
+        "mod.css": 1115,
+        "README.md": 202
+      },
+      "hashes": {
+        "manifest.json": "ce4adbe38e86fe812d6df5ed320bdf8df546908686f4d73a44a9b8616b2d7dad",
+        "mod.js": "d2a01f2ae31e9380c645f6072a37b48f598f489bcd70dcc12afbc4d1cc2b4d33",
+        "mod.css": "fbf70b2516557f803678c2fc9b9a3cd6a3d092898bea15059ffa54772b66e381",
+        "README.md": "ef752bbf6b91e11408e4d962a9d651dc252ea684e2a819aced89ecf0e02dbfb3"
+      },
+      "externalHosts": [],
+      "official": false,
+      "styles": "mod.css",
+      "issue": 2
     }
   ],
   "blocklist": []
