@@ -1,13 +1,10 @@
 import { useEffect, useState } from "react";
-import {
-  ArrowUturnLeftIcon,
-  TrashIcon,
-  ArrowDownTrayIcon,
-} from "@heroicons/react/20/solid";
+import { ArrowUturnLeftIcon, TrashIcon } from "@heroicons/react/20/solid";
 import * as vfs from "../vfs";
 import * as gitLayer from "../git";
 import { writeFileAndCommit, deleteFileAndCommit, deleteFeatureFully } from "../vfs/feature";
 import { IconButton } from "./ui";
+import { PublishMod } from "./PublishMod";
 import type { FeatureId, Manifest } from "../types";
 
 interface FeatureState {
@@ -483,25 +480,11 @@ export function DevPanel({
             </ul>
           </section>
 
-          <section>
-            <h2 className="mb-2 text-[12px] font-semibold uppercase tracking-wider text-gray-500">
-              export for marketplace
-            </h2>
-            <p className="mb-2 text-[13px] text-gray-500">
-              Download this mod as a zip, then add it to the{" "}
-              <code className="font-mono text-gray-600">marketplace/</code> folder
-              via a pull request on GitHub.
-            </p>
-            <button
-              type="button"
-              disabled={exporting}
-              onClick={() => void onExport()}
-              className="inline-flex items-center gap-1.5 rounded-md bg-violet-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-violet-500 transition-colors disabled:opacity-50"
-            >
-              <ArrowDownTrayIcon className="h-4 w-4" />
-              {exporting ? "Exporting..." : "Export zip"}
-            </button>
-          </section>
+          <PublishMod
+            featureId={featureId}
+            exporting={exporting}
+            onExportZip={() => void onExport()}
+          />
         </>
       )}
     </div>

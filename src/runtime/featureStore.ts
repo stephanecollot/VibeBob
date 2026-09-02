@@ -1,4 +1,13 @@
-import type { FeatureId, Manifest } from "../types";
+import type { FeatureId, Manifest, MarketplaceSource } from "../types";
+
+/** Why a mod was disabled by a marketplace takedown. */
+export interface BlockedInfo {
+  reason: string;
+  severity: "critical" | "warn";
+  at: string;
+  /** The user chose to keep running it anyway. Their browser, their call. */
+  acknowledged?: boolean;
+}
 
 export interface FeatureCache {
   id: FeatureId;
@@ -8,6 +17,9 @@ export interface FeatureCache {
   modJs?: string;
   modCss?: string;
   broken?: boolean;
+  /** Present for mods installed from the marketplace. Drives updates and takedowns. */
+  source?: MarketplaceSource;
+  blocked?: BlockedInfo;
 }
 
 /** The predicate the router uses to decide whether a mod belongs on a page. */
@@ -50,6 +62,8 @@ export async function applySyncMessage(input: {
   manifestJson?: string;
   modJs?: string;
   modCss?: string;
+  /** Enabled state for a brand-new feature. Ignored once one exists. */
+  initialEnabled?: boolean;
 }): Promise<void> {
   const { features } = await readAll();
   if (!input.exists) {
@@ -68,10 +82,12 @@ export async function applySyncMessage(input: {
     id: input.featureId,
     name: manifest?.name ?? existing?.name ?? "Untitled",
     matches: manifest?.matches ?? existing?.matches ?? [],
-    enabled: existing?.enabled ?? true,
+    enabled: existing?.enabled ?? input.initialEnabled ?? true,
     modJs: input.modJs,
     modCss: input.modCss,
     broken: existing?.broken,
+    source: manifest?.source ?? existing?.source,
+    blocked: existing?.blocked,
   };
   await chrome.storage.local.set({ features });
 }

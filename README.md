@@ -47,7 +47,24 @@ Every change is auto-committed to a per-feature git repo (in-browser, via Indexe
 - **URL-aware** — features auto-apply on matching sites, including SPA navigations
 - **Toggle on/off** — disable any feature without deleting it
 - **Error detection** — broken mods are flagged and errors surface in chat for easy fixing
+- **Marketplace** — install mods other people built, or publish yours in one click
 - **Zero backend** — runs entirely in your browser with your own API key
+
+## Marketplace
+
+Click **market** in the side panel to browse and install community mods. Before
+anything is installed you see which sites the mod will run on, who wrote it, and a
+link to its source — installs are pinned to a specific commit and verified by hash.
+
+To share one of your own: **dev** tab → **Publish to marketplace**. VibeBob checks
+the mod and opens a prefilled GitHub issue; submit it and a bot publishes it under
+your GitHub username, usually within a minute. No account to create beyond GitHub,
+and no token stored anywhere.
+
+Mods are listed as soon as they pass automated checks, so nobody reviews every one
+first. Anything harmful is removed and disables itself on machines that already
+installed it. See [marketplace/README.md](marketplace/README.md) for the format,
+the full check list, and how takedowns work.
 
 ## Development
 

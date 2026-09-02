@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: How the marketplace works
+    url: https://github.com/stephanecollot/VibeBob/blob/main/marketplace/README.md
+    about: Mod format, the publishing flow, and what the automated checks look for.

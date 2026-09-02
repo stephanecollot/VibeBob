@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { XMarkIcon } from "@heroicons/react/20/solid";
+import { XMarkIcon, ArrowUpCircleIcon, ShieldExclamationIcon } from "@heroicons/react/20/solid";
 import {
   listFeatureCaches,
   getApplied,
@@ -9,6 +9,10 @@ import {
   type FeatureCache,
 } from "../runtime/featureStore";
 import { deleteFeatureFully } from "../vfs/feature";
+import { loadCatalog, compareUrl } from "../marketplace/catalog";
+import { findUpdates, type UpdateInfo } from "../marketplace/updates";
+import { updateInstalled } from "../marketplace/install";
+import { acknowledgeBlocked } from "../marketplace/blocklist";
 import { readActiveTab, tabHost, type TabInfo } from "./TabBar";
 import { IconButton } from "./ui";
 import type { FeatureId } from "../types";
@@ -21,6 +25,8 @@ export function FeatureList({ onSelect }: Props) {
   const [features, setFeatures] = useState<FeatureCache[]>([]);
   const [tab, setTab] = useState<TabInfo | null>(null);
   const [applied, setApplied] = useState<Set<FeatureId>>(new Set());
+  const [updates, setUpdates] = useState<Map<FeatureId, UpdateInfo>>(new Map());
+  const [updating, setUpdating] = useState<FeatureId | null>(null);
 
   useEffect(() => {
     const refresh = () => {
@@ -36,6 +42,21 @@ export function FeatureList({ onSelect }: Props) {
     chrome.storage.onChanged.addListener(handler);
     return () => chrome.storage.onChanged.removeListener(handler);
   }, []);
+
+  // Reads the cached catalog, so this costs nothing on most opens. Updates are
+  // only ever offered, never applied on their own.
+  useEffect(() => {
+    let cancelled = false;
+    loadCatalog()
+      .then(({ catalog }) => findUpdates(catalog))
+      .then((list) => {
+        if (!cancelled) setUpdates(new Map(list.map((u) => [u.featureId, u])));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [features.length]);
 
   // The router records what it injected per tab, so "applied" is what is actually
   // running on the page — not just what would match its URL.
@@ -85,6 +106,41 @@ export function FeatureList({ onSelect }: Props) {
     await deleteFeatureFully(id);
   }
 
+  async function onKeepBlocked(id: FeatureId) {
+    if (
+      !confirm(
+        "This mod was removed from the marketplace, usually because it was unsafe.\n\n" +
+          "Keep it anyway? You will have to switch it back on yourself.",
+      )
+    )
+      return;
+    await acknowledgeBlocked(id);
+    setFeatures(await listFeatureCaches());
+  }
+
+  async function onUpdate(info: UpdateInfo) {
+    if (
+      !confirm(
+        `Update "${info.mod.name}" from v${info.fromVersion} to v${info.mod.version}?\n\n` +
+          "The current version is kept in this mod's history, so you can revert from the dev tab.",
+      )
+    )
+      return;
+    setUpdating(info.featureId);
+    try {
+      await updateInstalled(info.featureId, info.mod);
+      setUpdates((prev) => {
+        const next = new Map(prev);
+        next.delete(info.featureId);
+        return next;
+      });
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e));
+    } finally {
+      setUpdating(null);
+    }
+  }
+
   if (features.length === 0) {
     return (
       <p className="text-gray-400">
@@ -111,9 +167,13 @@ export function FeatureList({ onSelect }: Props) {
           key={f.id}
           feature={f}
           active={applied.has(f.id)}
+          update={updates.get(f.id)}
+          updating={updating === f.id}
           onSelect={onSelect}
           onToggle={onToggle}
           onDelete={onDelete}
+          onKeepBlocked={onKeepBlocked}
+          onUpdate={onUpdate}
         />
       ))}
     </ul>
@@ -149,20 +209,29 @@ function Heading({ children }: { children: ReactNode }) {
 function FeatureRow({
   feature: f,
   active,
+  update,
+  updating,
   onSelect,
   onToggle,
   onDelete,
+  onKeepBlocked,
+  onUpdate,
 }: {
   feature: FeatureCache;
   active: boolean;
+  update?: UpdateInfo;
+  updating: boolean;
   onSelect: (id: FeatureId) => void;
   onToggle: (id: FeatureId, enabled: boolean) => void;
   onDelete: (id: FeatureId) => void;
+  onKeepBlocked: (id: FeatureId) => void;
+  onUpdate: (info: UpdateInfo) => void;
 }) {
+  const blocked = f.blocked;
   return (
     <li
       className={`rounded-lg border bg-white p-3 shadow-sm ${
-        active ? "border-emerald-200" : "border-gray-200/80"
+        blocked ? "border-red-200" : active ? "border-emerald-200" : "border-gray-200/80"
       }`}
     >
       <div className="flex items-center gap-2">
@@ -202,6 +271,70 @@ function FeatureRow({
         )}
       </div>
       {f.broken && <div className="mt-1 text-[13px] text-red-500">broken</div>}
+
+      {blocked && (
+        <div className="mt-2 rounded-md bg-red-50 p-2.5 ring-1 ring-red-200">
+          <div className="flex items-start gap-1.5">
+            <ShieldExclamationIcon className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] font-semibold text-red-700">
+                {blocked.severity === "critical" && !blocked.acknowledged
+                  ? "Removed from the marketplace — switched off"
+                  : "Removed from the marketplace"}
+              </p>
+              <p className="mt-0.5 text-[13px] text-red-600">{blocked.reason}</p>
+              {!blocked.acknowledged && (
+                <div className="mt-1.5 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onDelete(f.id)}
+                    className="rounded-md bg-red-600 px-2 py-1 text-xs font-medium text-white shadow-sm transition-colors hover:bg-red-500"
+                  >
+                    Delete it
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onKeepBlocked(f.id)}
+                    className="rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-700 transition-colors hover:bg-red-100"
+                  >
+                    Keep anyway
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {update && !blocked && (
+        <div className="mt-2 flex items-center gap-2 rounded-md bg-amber-50 px-2.5 py-1.5 ring-1 ring-amber-200">
+          <ArrowUpCircleIcon className="h-4 w-4 shrink-0 text-amber-600" />
+          <span className="min-w-0 flex-1 text-[13px] text-amber-800">
+            v{update.mod.version} is available
+            {update.fromCommit && (
+              <>
+                {" · "}
+                <a
+                  href={compareUrl(update.fromCommit, update.mod)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline decoration-amber-300 hover:text-amber-900"
+                >
+                  what changed
+                </a>
+              </>
+            )}
+          </span>
+          <button
+            type="button"
+            disabled={updating}
+            onClick={() => onUpdate(update)}
+            className="shrink-0 rounded-md bg-amber-600 px-2 py-1 text-xs font-medium text-white shadow-sm transition-colors hover:bg-amber-500 disabled:opacity-50"
+          >
+            {updating ? "Updating..." : "Update"}
+          </button>
+        </div>
+      )}
     </li>
   );
 }

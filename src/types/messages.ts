@@ -80,4 +80,12 @@ export type AppMessage =
       manifestJson?: string;
       modJs?: string;
       modCss?: string;
+      /** Only honoured when the feature is new — an install can start disabled. */
+      initialEnabled?: boolean;
+    }
+  | {
+      /** Refresh the catalog and enforce takedowns now, rather than at the next alarm. */
+      type: "marketplace.enforce";
+      target: "background";
+      force?: boolean;
     };

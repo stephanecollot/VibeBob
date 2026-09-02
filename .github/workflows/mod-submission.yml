@@ -1,0 +1,142 @@
+name: Mod submission
+
+on:
+  issues:
+    types: [opened, edited, labeled]
+
+permissions:
+  contents: write
+  issues: write
+
+# Publishing pushes to main. Serialise so two submissions never race the push.
+concurrency:
+  group: marketplace-publish
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    # Only open submission issues. `edited` on a closed/published issue must not
+    # republish; `labeled` only matters for the owner's approval.
+    if: >-
+      github.event.issue.state == 'open' &&
+      contains(github.event.issue.labels.*.name, 'mod-submission') &&
+      (github.event.action != 'labeled' || github.event.label.name == 'approved')
+    runs-on: ubuntu-latest
+    outputs:
+      ok: ${{ steps.check.outputs.ok }}
+      gated: ${{ steps.check.outputs.gated }}
+      mod_id: ${{ steps.check.outputs.mod_id }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # Issue text is attacker-controlled: it reaches the script only through
+      # env, never through shell interpolation.
+      - name: Validate bundle
+        id: check
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node .github/scripts/validate-submission.mjs
+
+      - name: Upload decoded bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: submission-${{ github.event.issue.number }}
+          path: .submission/
+          if-no-files-found: ignore
+
+      - name: Post review comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          OK: ${{ steps.check.outputs.ok }}
+          GATED: ${{ steps.check.outputs.gated }}
+        run: |
+          gh issue comment "$ISSUE_NUMBER" --body-file report.md
+          if [ "$OK" = "true" ]; then
+            gh issue edit "$ISSUE_NUMBER" --add-label validated --remove-label validation-failed || true
+            if [ "$GATED" = "true" ]; then
+              gh issue edit "$ISSUE_NUMBER" --add-label needs-approval || true
+            fi
+          else
+            gh issue edit "$ISSUE_NUMBER" --add-label validation-failed --remove-label validated || true
+          fi
+
+  publish:
+    needs: validate
+    # Auto-publish when checks pass and the account gate is clear; otherwise
+    # wait for a maintainer to apply `approved`.
+    #
+    # No check on who applied it: GitHub only lets users with triage or write
+    # permission label an issue, so the label IS the capability. Pinning this to
+    # the owner's login breaks the moment you moderate from a second account or
+    # add a maintainer, and it fails silently — the worst way to fail.
+    if: >-
+      needs.validate.outputs.ok == 'true' &&
+      (needs.validate.outputs.gated == 'false' ||
+       (github.event.action == 'labeled' && github.event.label.name == 'approved'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Stage mod files
+        id: stage
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+          APPROVED_PATH: ${{ github.event.action == 'labeled' }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node .github/scripts/publish-submission.mjs
+
+      # Two commits, one push. `commit` in the catalog comes from
+      # `git log -1 -- <dir>`, so the files must be committed before the catalog
+      # is built — that pin is what lets installs verify what they fetch.
+      - name: Commit and push
+        env:
+          MOD_ID: ${{ steps.stage.outputs.mod_id }}
+          VERSION: ${{ steps.stage.outputs.version }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          git config user.name "vibebob-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add marketplace
+          git commit -m "marketplace: publish ${MOD_ID} v${VERSION} (#${ISSUE_NUMBER})"
+          node .github/scripts/build-catalog.mjs
+          git add marketplace/catalog.json
+          git commit -m "marketplace: rebuild catalog" || true
+          git push || (git pull --rebase origin main && git push)
+
+      - name: Close the issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          MOD_ID: ${{ steps.stage.outputs.mod_id }}
+        run: |
+          gh issue comment "$ISSUE_NUMBER" --body-file published.md
+          gh issue edit "$ISSUE_NUMBER" --title "[mod] $MOD_ID" \
+            --add-label published --remove-label needs-approval || true
+          gh issue close "$ISSUE_NUMBER" --reason completed
+
+      - name: Report failure on the issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh issue comment "$ISSUE_NUMBER" --body \
+            "Publishing failed. Details: $RUN_URL"

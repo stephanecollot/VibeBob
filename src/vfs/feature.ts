@@ -24,13 +24,17 @@ async function packFeature(id: FeatureId): Promise<{
   }
 }
 
-async function notifyFeatureChanged(id: FeatureId): Promise<void> {
+async function notifyFeatureChanged(
+  id: FeatureId,
+  initialEnabled?: boolean,
+): Promise<void> {
   const data = await packFeature(id);
   const msg: AppMessage = {
     target: "background",
     type: "feature.sync",
     featureId: id,
     ...data,
+    ...(initialEnabled === undefined ? {} : { initialEnabled }),
   };
   try {
     await chrome.runtime.sendMessage(msg);
@@ -39,10 +43,17 @@ async function notifyFeatureChanged(id: FeatureId): Promise<void> {
   }
 }
 
-export async function createFeature(id: FeatureId): Promise<void> {
+/**
+ * `enabled` seeds the very first sync. An install that starts disabled must
+ * never have a window where the router could inject it.
+ */
+export async function createFeature(
+  id: FeatureId,
+  opts: { enabled?: boolean } = {},
+): Promise<void> {
   await mkFeatureDir(id);
   await initRepo(id);
-  await notifyFeatureChanged(id);
+  await notifyFeatureChanged(id, opts.enabled);
 }
 
 export async function writeFileAndCommit(

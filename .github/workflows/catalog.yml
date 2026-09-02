@@ -1,0 +1,39 @@
+name: Rebuild catalog
+
+# Covers hand-edits to marketplace/ by a maintainer. Bot pushes do not retrigger
+# workflows, which is why the publish job rebuilds the catalog inline instead of
+# relying on this.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'marketplace/**'
+      - '!marketplace/catalog.json'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: marketplace-publish
+  cancel-in-progress: false
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node .github/scripts/build-catalog.mjs
+      - name: Commit if changed
+        run: |
+          git config user.name "vibebob-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add marketplace/catalog.json
+          git diff --cached --quiet && echo "catalog already current" && exit 0
+          git commit -m "marketplace: rebuild catalog"
+          git push || (git pull --rebase origin main && git push)
