@@ -73,8 +73,8 @@ Mods are listed as soon as they pass the checks — nobody reads every submissio
 first. Anything harmful gets removed after the fact:
 
 - Add the `takedown` label to a mod's submission issue. It leaves the catalog, and
-  installed copies **disable themselves** within 6 hours (or immediately when
-  someone opens the Marketplace tab), showing the reason and offering to delete.
+  installed copies **disable themselves** the next time that person opens VibeBob
+  or restarts Chrome, showing the reason and offering to delete.
 - Remove the label to restore it. People who had it keep it disabled until they
   turn it back on themselves.
 - For mods with no issue, run the **Takedown** workflow from the Actions tab.

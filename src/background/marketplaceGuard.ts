@@ -3,13 +3,15 @@ import { enforceBlocklist, type EnforcementResult } from "../marketplace/blockli
 import type { FeatureId } from "../types";
 import type { FeatureCache } from "../runtime/featureStore";
 
-const ALARM = "marketplace-refresh";
-const PERIOD_MINUTES = 360;
-
 /**
- * Enforcement lives in the service worker, not the side panel: a takedown has
- * to reach someone who installed a mod months ago and never opens the panel
- * again.
+ * Enforcement lives in the service worker rather than the side panel, so it
+ * still runs for someone who installed a mod long ago and rarely opens the
+ * panel. It is driven by the extension waking up — browser start, service
+ * worker start, and the panel opening — rather than a scheduled alarm, which
+ * would cost users an `alarms` permission for a background timer.
+ *
+ * loadCatalog's soft TTL means frequent wakes cost nothing: at most one network
+ * request per 30 minutes.
  */
 export async function refreshAndEnforce(force = false): Promise<EnforcementResult | null> {
   try {
@@ -46,17 +48,6 @@ async function updateBadge(): Promise<void> {
 }
 
 export function attachMarketplaceGuard(): void {
-  // Only create it when missing: chrome.alarms.create replaces an existing
-  // alarm, so recreating on every service-worker wake would push the next
-  // check back forever and the periodic refresh would never fire.
-  void chrome.alarms.get(ALARM).then((existing) => {
-    if (!existing) chrome.alarms.create(ALARM, { periodInMinutes: PERIOD_MINUTES });
-  });
-
-  chrome.alarms.onAlarm.addListener((alarm) => {
-    if (alarm.name === ALARM) void refreshAndEnforce();
-  });
-
   chrome.runtime.onStartup.addListener(() => {
     void refreshAndEnforce();
   });
